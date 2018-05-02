@@ -2,6 +2,7 @@
 <TITAN_Project_File_Information version="1.0">
   <ProjectName>oneM2MTester</ProjectName>
   <Folders>
+    <FolderResource projectRelativePath="logs" relativeURI="logs"/>
     <FolderResource projectRelativePath="oneM2MTester" relativeURI="oneM2MTester"/>
     <FolderResource projectRelativePath="oneM2MTester/AbstractTestSuite" relativeURI="oneM2MTester/AbstractTestSuite"/>
     <FolderResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibCommon" relativeURI="oneM2MTester/AbstractTestSuite/LibCommon"/>
@@ -39,7 +40,7 @@
     <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Functions.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Functions.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Pics.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Pics.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Pixits.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Pixits.ttcn"/>
-    <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Ports.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Ports.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Ports.ttcnpp" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Ports.ttcnpp"/>
     <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Templates.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Templates.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_TestSystem.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_TestSystem.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Types.ttcn" relativeURI="oneM2MTester/AbstractTestSuite/LibOneM2M/OneM2M_Types.ttcn"/>
@@ -83,6 +84,8 @@
     <FileResource projectRelativePath="oneM2MTester/Ports/IPL4asp/IPL4asp_Types.ttcn" relativeURI="oneM2MTester/Ports/IPL4asp/IPL4asp_Types.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/Ports/IPL4asp/IPL4asp_discovery.cc" relativeURI="oneM2MTester/Ports/IPL4asp/IPL4asp_discovery.cc"/>
     <FileResource projectRelativePath="oneM2MTester/Ports/IPL4asp/IPL4asp_protocol_L234.hh" relativeURI="oneM2MTester/Ports/IPL4asp/IPL4asp_protocol_L234.hh"/>
+         <FileResource projectRelativePath="oneM2MTester/Ports/IPL4asp/IPL4asp_User_CtrlFunct.ttcn" relativeURI="oneM2MTester/Ports/IPL4asp/IPL4asp_User_CtrlFunct.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/Ports/IPL4asp/IPL4asp_User_CtrlFunctDef.cc" relativeURI="oneM2MTester/Ports/IPL4asp/IPL4asp_User_CtrlFunctDef.cc"/>
     <FileResource projectRelativePath="oneM2MTester/Ports/InfoPort/InfoPort.cc" relativeURI="oneM2MTester/Ports/InfoPort/InfoPort.cc"/>
     <FileResource projectRelativePath="oneM2MTester/Ports/InfoPort/InfoPort.hh" relativeURI="oneM2MTester/Ports/InfoPort/InfoPort.hh"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/CoAP/CoAP_EncDec.cc" relativeURI="oneM2MTester/ProtocolModules/CoAP/CoAP_EncDec.cc"/>
@@ -105,7 +108,7 @@
     <FileResource projectRelativePath="oneM2MTester/src/Parser/parser_for_acp.cc" relativeURI="oneM2MTester/src/Parser/parser_for_acp.cc"/>
     <FileResource projectRelativePath="oneM2MTester/src/Parser/parser_for_noti.cc" relativeURI="oneM2MTester/src/Parser/parser_for_noti.cc"/>
     <FileResource projectRelativePath="oneM2MTester/src/Parser/parser_for_sub.cc" relativeURI="oneM2MTester/src/Parser/parser_for_sub.cc"/>
-    <FileResource projectRelativePath="oneM2MTester/src/TestSystemFramework/OneM2M_DualFaceMapping.ttcn" relativeURI="oneM2MTester/src/TestSystemFramework/OneM2M_DualFaceMapping.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/src/TestSystemFramework/OneM2M_DualFaceMapping.ttcnin" relativeURI="oneM2MTester/src/TestSystemFramework/OneM2M_DualFaceMapping.ttcnin"/>
     <FileResource projectRelativePath="oneM2MTester/src/TestSystemFramework/oneM2MTester_Functions.ttcn" relativeURI="oneM2MTester/src/TestSystemFramework/oneM2MTester_Functions.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/src/TestSystemFramework/oneM2MTester_Template.ttcn" relativeURI="oneM2MTester/src/TestSystemFramework/oneM2MTester_Template.ttcn"/>
   </Files>
@@ -115,6 +118,7 @@
       <ProjectProperties>
         <MakefileSettings>
           <targetExecutable>bin/oneM2MTester</targetExecutable>
+          <preprocessorIncludes/>
           <includeSourceInfo>true</includeSourceInfo>
           <addSourceLineInfo>true</addSourceLineInfo>
         </MakefileSettings>

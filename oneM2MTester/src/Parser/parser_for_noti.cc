@@ -17,13 +17,13 @@
 #include "json.h"
 #include "json-forwards.h"
 #include "External_function.hh"
-#include "OneM2M_DualFaceMapping.hh"
+#include "OneM2M_Ports.hh"
 
 using namespace tinyxml2;
 using namespace Json;
 using namespace std;
 
-namespace OneM2M__DualFaceMapping {
+namespace OneM2M__Ports {
 	CHARSTRING noti_JSON_Dec_Parser(const CHARSTRING& source_str, const CHARSTRING& serial_type){
 
 		CHARSTRING SERIALIZATION_JSON = "json";
@@ -112,8 +112,7 @@ namespace OneM2M__DualFaceMapping {
 		// Constant variables for the resource and attributes name
 		static const std::string SUBSCRIPTION("subscription"), RESOURCE("resource"), EVENT_NOTIFICATION_CRITERIA("eventNotificationCriteria"),
 							     OPERATION_MONITOR_LIST("operationMonitor_list"), EXPIRATION_COUNTER("expirationCounter"), CURRENT_BYTE_SIZE("currentByteSize"),
-								 CURRENT_NR_INSTANCES("currentNrOfInstances"), STATE_TAG("stateTag"), AE("aE"), CONTAINER("container"), MAX_INSTANCE_AGE("maxInstanceAge"),
-								 CSEBASE("cSEBase");
+								 CURRENT_NR_INSTANCES("currentNrOfInstances"), STATE_TAG("stateTag"), AE("aE"), CONTAINER("container"), MAX_INSTANCE_AGE("maxInstanceAge");
 
 		std::string name_long;
 		std::string rootName;
@@ -197,7 +196,7 @@ namespace OneM2M__DualFaceMapping {
 		}
 
 		// * rootTags such as 'm2m:sub', 'm2m:con' have to be under name "resource"
-		if(rootName == SUBSCRIPTION || rootName == AE || rootName == CONTAINER || rootName == CSEBASE) {
+		if(rootName == SUBSCRIPTION || rootName == AE || rootName == CONTAINER) {
 
 			Value elemForSub(objectValue);
 			elemForSub[rootName] = containerForSubElem;

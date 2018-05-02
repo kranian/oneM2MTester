@@ -12,6 +12,10 @@
  */
 
 module OneM2M_Ports {
+
+#include "OneM2M_DualFaceMapping.ttcnin"
+
+
 	import from OneM2M_Types all;
 	import from IPL4asp_PortType all;
 	import from IPL4asp_Types all;
@@ -25,7 +29,7 @@ module OneM2M_Ports {
 	import from OneM2M_Constants all;
 	import from OneM2M_Pixits all;
 	import from oneM2MTester_Template all;
-	import from OneM2M_DualFaceMapping all; 
+	//import from OneM2M_DualFaceMapping all; 
 	
 
 	/**
@@ -35,12 +39,18 @@ module OneM2M_Ports {
 	 * @desc this port is allowed to extend for futher usage  
 	 * @desc e.g. extend OneM2MPort to dual-faced port
 	 */
+	 	
+	 
 	type port OneM2MPort message map to IPL4asp_PT {
 		out 
-			MsgOut 			to	ASP_Send with f_enc_M2MPrimitive_to_ASPSend()
+			MsgOut 			to	ASP_Send with f_enc_M2MPrimitive_to_ASPSend();
 		in 
 			MsgIn	   from ASP_RecvFrom	with f_dec_ASPRecvFrom_to_M2MPrimitive(),
-	     	ASP_Event  from ASP_Event       with f_discardASPEvent()	
+	     	ASP_Event  from ASP_Event       with f_handleASPEvent()	;
+	     
+	   var     PortMap v_portMap
+	
+	      		      	
 	} with {extension "internal"}
 	
 	/**
@@ -52,7 +62,7 @@ module OneM2M_Ports {
 	     	
 	     in
 	     	UtTriggerAckPrimitive from ASP_RecvFrom 	 with f_dec_ASPRecvFrom_to_M2MPrimitive_for_trigger(),
-	     	ASP_Event             from ASP_Event         with f_discardASPEvent()
+	     	ASP_Event             from ASP_Event         with f_handleASPEvent_trigger()
 	} with {extension "internal"}
 	
 	/**

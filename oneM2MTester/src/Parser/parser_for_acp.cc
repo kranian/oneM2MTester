@@ -17,13 +17,13 @@
 #include "json.h"
 #include "json-forwards.h"
 #include "External_function.hh"
-#include "OneM2M_DualFaceMapping.hh"
+#include "OneM2M_Ports.hh"
 
 using namespace tinyxml2;
 using namespace Json;
 using namespace std;
 
-namespace OneM2M__DualFaceMapping {
+namespace OneM2M__Ports {
 	CHARSTRING acp_JSON_Enc_Parser(const CHARSTRING& p__source){
 
 		Value elemName;

@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace OneM2M__DualFaceMapping {
+namespace OneM2M__Ports {
 	bool initial_mapping();
 	std::string getShortName(std::string long_name);
 	std::string getLongName(std::string short_name);

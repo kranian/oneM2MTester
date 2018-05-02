@@ -1,0 +1,1495 @@
+/****************************************************************************************
+* Copyright (c) 2017  Korea Electronics Technology Institute.							*
+* All rights reserved. This program and the accompanying materials						*
+* are made available under the terms of                                         		*
+* - Eclipse Public License v1.0(http://www.eclipse.org/legal/epl-v10.html),     		*
+* - BSD-3 Clause Licence(http://www.iotocean.org/license/),                    			* 
+* - MIT License   (https://github.com/open-source-parsers/jsoncpp/blob/master/LICENSE), * 
+* - zlib License  (https://github.com/leethomason/tinyxml2#license).                    *	
+*																						*
+* Contributors:		                                                                    *
+*   JaeYoung Hwang - forest62590@gmail.com                                              *
+*   NakMyoung Sung - diesnm201@gmail.com												*
+*   Ting Martin MIAO - initial implementation                                   		*
+*                                                                               		*                                                        		
+****************************************************************************************/
+
+// Description:																	
+// OneM2M_DualFaceMapping.ttcn  														
+// Encode and decode OneM2M data types to/from protocol binding message
+
+//module OneM2M_DualFaceMapping {
+
+// Module dependencies
+import from Mqtt_v3_1_1_Types all;
+import from Mqtt_v3_1_1_IPL4SizeFunction all;
+import from CoAP_Types all;
+import from HTTPmsg_Types all;
+import from HTTPmsg_MessageLen all;
+
+import from IPL4asp_Types all;
+import from OneM2M_Types all;
+import from OneM2M_Primitive_EncDec all;
+import from OneM2M_Constants all;
+import from OneM2M_Pixits all;
+import from oneM2MTester_Template all;
+import from IPL4asp_User_CtrlFunct all;
+
+
+modulepar  boolean connection_close:=false;
+
+// External functions
+external function f_extract_from_string(in charstring p_source) return charstring;
+external function f_primitiveContent_Dec(in charstring p_source, in charstring p_serialization_type, in charstring p_noti_received) return charstring;
+external function f_upper2lower(in charstring p_string) return charstring;
+
+//Serialization encoding for XML, JSON 
+external function f_serialization_Enc(in charstring p_source, in charstring p_serialization_type, in AttributeAux_list p_forcedFields) return charstring;
+external function f_serialization_Enc_for_trigger_msg(in charstring p_source) return charstring;
+external function f_split(in charstring p_cs, in charstring p_delim) return charstring;
+external function f_split_uri(in charstring p_cs, in charstring p_delim) return Charstring_List;
+external function f_replace(in charstring p_source, in charstring p_str1, in charstring p_str2) return charstring;
+external function f_adressingFormatter(in charstring p_source, in charstring p_str1, in charstring p_str2) return charstring;
+
+// Function to handle the connection id used in mcaPortIn
+external function f_getConId_mcaPortIn() return integer;
+external function f_setConId_mcaPortIn(in integer mca_port_in_conID);
+
+
+
+type record PortState {
+charstring  portRef,  
+integer     connId,
+MsgState    state,
+ConnState   connState,
+//  MsgGetLenState lenState,
+MsgOut      msgOut,
+RequestID   requestID     
+} 
+
+
+type record of PortState PortStates;
+
+
+type record PortMap  {  
+PortStates  portStates ,
+integer    firstFree, 
+boolean    init
+}
+
+
+type enumerated  MsgState {idle, sent, postponed }	
+// type enumerated  MsgGetLenState { stateSet, stateUnset }	
+type enumerated  ConnState { connected, waitForClose }	
+
+
+
+
+template PortEvent t_connClosed:={
+connClosed:={
+  connId:=?,
+  remName:=?,
+  remPort:=?,
+  locName:=?,
+  locPort:=?,
+  proto:=?,
+  userData:=?	 
+
+}	
+} 
+
+
+template PortEvent t_connOpened:=
+{ connOpened := 
+{ 
+  connId := ?, 
+  remName := ?, 
+  remPort := ?, 
+  locName := ?, 
+  locPort := ? , 
+  proto := { tcp := { } }, 
+  userData := 0 
+} 
+}
+
+
+template PortEvent t_error:=
+{ 
+result := 
+{ errorCode := ?, 
+  connId := ?, 
+  os_error_code := *, 
+  os_error_text := * 
+} 
+}
+
+
+
+//*************************************************************************
+function f_HTTP_Message_len(  in octetstring stream,   inout ro_integer args) return integer
+//*************************************************************************
+{    
+return f_HTTPMessage_len(stream) ;                 
+}
+
+
+
+/******************************************************
+* Function for mcaPort and mccPort encoding           *
+*******************************************************/
+function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Send)  port OneM2MPort {
+var charstring 		v_protocol_type 	:= "";
+var charstring 		v_serial_type 		:= "";   
+var charstring 		v_payload 			:= "";
+var octetstring 	v_encoded_msg; 
+var RequestPrimitive v_reqPrimitive;
+var integer 		v_resultContent;  
+var integer 		v_operation;
+var charstring 		v_from				:= "";
+var charstring 		v_to				:= "";
+var charstring 		v_reqID				:= "";
+var integer 		v_ty;
+var charstring 		v_uri 				:= "{UNINITIALIZED}";
+var integer 		v_len 				:= 0;     
+var Charstring_List csList;                
+var charstring 		v_contentType;  		
+var ConnectionId 	connectId_init 		:= -1;
+
+//get protocol binding type and convert it to lowercase 
+if(ispresent(p_msgout.protocolBinding)){
+  v_protocol_type := f_upper2lower(p_msgout.protocolBinding);
+  log(__SCOPE__&"-Input Protocol Type: ", v_protocol_type); 
+}
+
+//get serialization type and convert it to lowercase
+if(ispresent(p_msgout.serialization)){  
+  v_serial_type := f_upper2lower(p_msgout.serialization);
+  log(__SCOPE__&"-Input Serial Type: ", v_serial_type);   	   		
+}  
+
+if(ispresent(p_msgout.primitive)){ 	  
+  if(ischosen(p_msgout.primitive.requestPrimitive)){
+
+    v_reqPrimitive := p_msgout.primitive.requestPrimitive; 
+
+    //test encvalue(primitiveContent) to be removed  
+    if(ispresent(v_reqPrimitive.primitiveContent)) {
+
+      // @TaeHyun Kim, thyun.kim@synctechno.com
+      // forcedFields 
+      if(ispresent(p_msgout.forcedFields)){
+        v_reqPrimitive.primitiveContent := f_applyForcedAttribute(v_reqPrimitive.primitiveContent, p_msgout.forcedFields);        
+        log(__SCOPE__&"-Input Forced Fields: ", p_msgout.forcedFields); 
+      }	
+
+      /* var bitstring v_bit_stream := encvalue(v_reqPrimitive.primitiveContent);
+
+      if(v_bit_stream != ''B) {
+      var charstring v_char_streamTest := oct2char(bit2oct(v_bit_stream));
+      log(__SCOPE__&" v_char_streamTest ", v_char_streamTest);
+      } */   		        		    
+    }
+
+    //operation attribute
+    if(ispresent(v_reqPrimitive.operation)) {
+      v_operation	:= enum2int(v_reqPrimitive.operation);                      
+    }
+
+    //from attribute
+    if(ispresent(v_reqPrimitive.from_)) {
+      v_from := oct2char(unichar2oct(v_reqPrimitive.from_));       
+
+      if(v_from == "UnknowOriginator") {
+        v_from := "C" & v_from;  
+      }	                    
+    }
+
+    //parse requestPrimitive to_ attribute and generate protocol target URL
+    if(ispresent(v_reqPrimitive.to_)) {
+      v_to := oct2char(unichar2oct(v_reqPrimitive.to_)); 
+      v_uri := v_to;  
+
+      if(PX_PRIMITIVE_SCOPE == e_spRelative){
+        v_uri := "/~" & v_to;	
+        log(__SCOPE__&"-f_adressingFormatter(Sp-relative):", v_uri);
+      } else if (PX_PRIMITIVE_SCOPE == e_cseRelative){
+        v_uri := "/" & v_to;
+        log(__SCOPE__&"-f_adressingFormatter(CSE-relative):", v_uri);	  		  
+      } else if (PX_PRIMITIVE_SCOPE == e_absolute){
+        v_uri := f_adressingFormatter(v_to, "/", "/_");
+
+        var AddressingMethod p_addressingMethod := PX_ADDRESSING_METHOD;
+
+        if (ischosen(v_reqPrimitive.primitiveContent.aE) and p_addressingMethod == e_nonHierarchical){
+          v_uri := v_uri & "/" & PX_CSE_RESOURCE_ID;	 
+        }
+
+        log(__SCOPE__&"-f_adressingFormatter(Absolute-relative):", v_uri); 
+      }	         		
+    }
+
+    //resource type attribute
+    if(ispresent(v_reqPrimitive.resourceType)){
+      v_ty := enum2int(v_reqPrimitive.resourceType);                         
+    }
+
+    //requestIdentifier attribute
+    if(ispresent(v_reqPrimitive.requestIdentifier)){
+      v_reqID	:= oct2char(unichar2oct(v_reqPrimitive.requestIdentifier));                         
+    }
+
+    //resultContent attribute
+    if(ispresent(v_reqPrimitive.resultContent)){
+      v_resultContent	:= enum2int(v_reqPrimitive.resultContent); 
+
+      if(HTTP_BINDING == v_protocol_type){
+        v_uri := v_uri & "?rcn=" & int2str(v_resultContent);                  		  
+      }          		                        
+    }
+
+    // FiterCriteria
+    if(ispresent(v_reqPrimitive.filterCriteria)) {
+
+      // filterUsage value can be 1 or 2  
+      if(ispresent(v_reqPrimitive.filterCriteria.filterUsage) and (2 == v_operation)) {
+        var integer filterUsageValue := enum2int(v_reqPrimitive.filterCriteria.filterUsage);
+
+        if(filterUsageValue == 1) {
+          v_uri := v_uri & "?fu=1";  
+        } else if(filterUsageValue == 2) {
+          v_uri := v_uri & "?fu=2";  
+        }
+      }
+
+      if(ispresent(v_reqPrimitive.discoveryResultType)) {
+        var integer discoveryResultTypeValue := enum2int(v_reqPrimitive.discoveryResultType);
+
+        if(discoveryResultTypeValue == 1) {
+          v_uri := v_uri & "&drt=1";  
+        } else if(discoveryResultTypeValue == 2) {
+          v_uri := v_uri & "&drt=2";  
+        }	
+      }
+
+      if(ispresent(v_reqPrimitive.filterCriteria.labels)) {
+
+        var charstring v_char_streamTest := ttcn2string(v_reqPrimitive.filterCriteria.labels);
+        var charstring extracted_string := "";
+        extracted_string := f_extract_from_string(v_char_streamTest);
+
+        v_uri := v_uri & "&lbl=" & extracted_string;	 
+      }
+
+      if(ispresent(v_reqPrimitive.filterCriteria.expireBefore)) {
+        var charstring expireBeforeValue := unichar2char(v_reqPrimitive.filterCriteria.expireBefore);
+        v_uri := v_uri & "&exb=" & expireBeforeValue;  	
+      }
+
+      if(ispresent(v_reqPrimitive.filterCriteria.expireAfter)) {
+        var charstring expireAfterValue := unichar2char(v_reqPrimitive.filterCriteria.expireAfter);
+        v_uri := v_uri & "&exa=" & expireAfterValue;  
+      }
+    }
+
+    if(COAP_BINDING == v_protocol_type or HTTP_BINDING == v_protocol_type ) {	
+      var CoAP_Message v_CoapMsgToSend;
+      var CoAP_ReqResp v_CoapMsg;
+
+      var integer v_contentFormat := 0;
+
+      if(XML_SERIAL ==  v_serial_type){
+        v_contentFormat := APPLICATION_XML_COAP;                  		  
+      }else if(JSON_SERIAL ==  v_serial_type){
+        v_contentFormat := APPLICATION_JSON_COAP;
+      }                
+
+      if(COAP_BINDING == v_protocol_type){
+
+        //get hierarchical structured uri elements
+        csList := f_split_uri(v_uri, "/");				
+
+        if( 1 == v_operation) { //CREATE
+
+          //original payload with long name representation
+          v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+
+          //serialized payload with short name representation
+          if(v_payload != ""){		
+            if(ispresent(p_msgout.forcedFields)) {						  
+              v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+            } else {
+              var AttributeAux_list v_nullFields := {};
+              v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+            }			  					  
+          }	
+
+          //Get CoapPReqResp Message
+          v_CoapMsg := valueof(t_COAP_POST_request(v_contentFormat, v_ty, v_from, v_reqID, v_payload)); 
+
+          //Update CoapReqResP Message Options - Uri-Path
+          for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
+            if(csList[i] != ""){ 
+              v_CoapMsg.options[i+6]:= { uri_path := csList[i] };
+              log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+6]);
+              v_len := i;
+            }
+          }
+
+          //Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
+          if(ispresent(v_reqPrimitive.resultContent)){
+            v_CoapMsg.options[v_len+7]:= { uri_query := "rcn=" & int2str(v_resultContent) };
+          }														  	  
+        } else if( 2 == v_operation or 3 == v_operation or 4 == v_operation) {
+
+          //Get CoapPReqResp Message
+          if( 2 == v_operation){ //RETRIEVE
+            v_CoapMsg := valueof(t_COAP_GET_request(v_contentFormat, v_from, v_reqID));
+          } else if( 3 == v_operation) { //UPDATE
+            //original payload with long name representation
+            v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+
+            //serialized payload with short name representation
+            if(v_payload != ""){
+              if(ispresent(p_msgout.forcedFields)) {						  
+                v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+              } else {
+                var AttributeAux_list v_nullFields := {};
+                v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+              }								  
+            }							       					
+            v_CoapMsg := valueof(t_COAP_PUT_request(v_contentFormat, v_from, v_reqID, v_payload));
+          }else if( 4 == v_operation){ //DELETE
+            v_CoapMsg := valueof(t_COAP_DELETE_request(v_contentFormat, v_from, v_reqID));
+          }
+
+          //Update CoapReqResP Message Options - Uri-Path
+          for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
+            if(csList[i] != ""){
+              v_CoapMsg.options[i + 5]:= { uri_path := csList[i] };
+              log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+5]);	  	
+              v_len := i;
+            }
+          }
+
+          //Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
+          if(ispresent(v_reqPrimitive.resultContent)){        
+            v_CoapMsg.options[v_len + 6]:= { uri_query := "rcn=" & int2str(v_resultContent) };        
+          }					  
+        } else {
+          log(__SCOPE__ &"Not supported operation type!", v_operation);
+        }
+
+        //generate CoAP Message
+        v_CoapMsgToSend := {
+          msg := v_CoapMsg
+        }
+        log(__SCOPE__&"-v_CoapMsgToSend-CoAP Message: ", v_CoapMsgToSend); 
+
+        //encoding CoAP message
+        var integer int_debug := f_CoAP_enc(v_CoapMsgToSend, v_encoded_msg); 
+        log(__SCOPE__ &"-f_CoAP_enc: encoded CoAP message:\n", v_encoded_msg);
+
+      } else if(HTTP_BINDING == v_protocol_type) {
+        var HTTPRequest v_httpReqMsg;
+        var HTTPMessage v_httpMsgToSend;
+        var charstring v_accept; 
+
+        //assemble accept with serialization type
+        v_accept := ACCEPT_BASE & v_serial_type;
+
+        if( 1 == v_operation ){ //CREATE 
+
+          v_contentType := CONTENT_TYPE_BASE & v_serial_type & ";ty=" & int2str(v_ty);
+
+          //original payload with long name representation
+          v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type); log(__SCOPE__&"-v_payload: ", v_payload);
+
+          //serialized payload with short name representation
+          if(v_payload != ""){		
+            if(ispresent(p_msgout.forcedFields)) {						  
+              v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+            } else {
+              var AttributeAux_list v_nullFields := {};
+              v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+            }	 					  
+          } else {
+            log(__SCOPE__ &"-[WARNING]f_encode_requestPrimitive: payload is NULL\n"); 
+          }
+
+          v_httpReqMsg := valueof(t_HTTP_POST_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload)); 
+
+        } else if ( 2 == v_operation ){ //RETRIEVE
+          v_httpReqMsg := valueof(t_HTTP_GET_request(connectId_init, v_uri, v_accept, v_from, v_reqID));
+        } else if ( 3 == v_operation ){ //UPDATE		     	
+
+          v_contentType := CONTENT_TYPE_BASE & v_serial_type;
+
+          //original payload with long name representation
+          v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+
+          //serialized payload with short name representation
+          if(v_payload != "") {
+            if(ispresent(p_msgout.forcedFields)) {						  
+              v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+            } else {
+              var AttributeAux_list v_nullFields := {};
+              v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+            }	 
+          }
+
+          v_httpReqMsg := valueof(t_HTTP_PUT_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload));
+
+        }else if( 4 == v_operation){ //DELETE
+          v_httpReqMsg := valueof(t_HTTP_DELETE_request(connectId_init, v_uri, v_accept, v_from, v_reqID)); 	
+        } else {
+          log(__SCOPE__ &"-Not supported operation type!", v_operation);
+        }
+
+        //generate HTTP Message
+        v_httpMsgToSend := {
+          request:= v_httpReqMsg                             	  
+        }
+        log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
+
+        v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
+        log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
+      }            
+    }else{
+      log(__SCOPE__ &"-[warning]NOT SUPPORTED Serialization or Protocol binding TYPE !! ");   		  	  
+    }
+
+    // Handling the connectionID                
+    p_asp_Send.connId := connectId_init;
+
+  } else if (ischosen(p_msgout.primitive.responsePrimitive)) {
+    var ResponsePrimitive v_rspPrimitive := p_msgout.primitive.responsePrimitive;
+    var charstring v_rspRequestID_		 := "";
+    var integer v_response_status;
+    var integer v_onem2m_response_status;
+    var HTTPResponse v_httpRespMsg;
+    var HTTPMessage v_httpMsgToSend;
+
+    // Handling the connectionID    
+    p_asp_Send.connId := f_getConId_mcaPortIn();
+
+    // ResponseStatus
+    if(ispresent(v_rspPrimitive.responseStatusCode)) {
+      v_onem2m_response_status := enum2int(v_rspPrimitive.responseStatusCode);
+      v_response_status := enum2int(v_rspPrimitive.responseStatusCode);         
+
+      // change onem2m response stauts code to http response status code
+      if(v_response_status == 2000) {
+        v_response_status := 200;
+      } else if (v_response_status == 2001) {
+        v_response_status := 201;
+      } else if (v_response_status == 2004) {
+        v_response_status := 204;       
+      } else if (v_response_status == 4000) {
+        v_response_status := 400;
+      }
+    }
+
+    // RequestIdentifier
+    if(ispresent(v_rspPrimitive.requestIdentifier)) {
+      v_rspRequestID_	:= oct2char(unichar2oct(v_rspPrimitive.requestIdentifier));                  
+    }
+
+    v_httpRespMsg := valueof(http_response_for_mcaPortIn(f_getConId_mcaPortIn(), v_response_status, v_onem2m_response_status, v_rspRequestID_, ""));
+
+    //generate HTTP Message
+    v_httpMsgToSend := {
+      response:= v_httpRespMsg                             	  
+    }
+    log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
+
+    v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
+    log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);				
+  }
+
+  //Generate IPL4ASP message 				
+  if(HTTP_BINDING == v_protocol_type){
+    p_asp_Send.proto 	:= {tcp := {}};
+  } else if(COAP_BINDING == v_protocol_type){
+    p_asp_Send.proto 	:= {udp := {}};
+  }
+  p_asp_Send.msg 	:= v_encoded_msg; 
+}//if_msg_primitive
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
+
+
+//register message length functions		
+if(PX_PROTOCOL_BINDING=="HTTP")
+{
+
+  //--------------------------------------------------------------------------
+  var f_IPL4_getMsgLen getMsg_Func := refers(f_HTTP_Message_len);
+  IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),-1, getMsg_Func, {});
+  //--------------------------------------------------------------------------		
+}
+else  if(PX_PROTOCOL_BINDING=="MQTT") {
+  //--------------------------------------------------------------------------
+  var f_IPL4_getMsgLen getMsg_Func := refers(f_GetMsgLengthMQTT);
+  IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),-1, getMsg_Func, {});
+  //--------------------------------------------------------------------------	
+}
+
+else {}		//not needed for CoAP
+
+
+if (connection_close)
+{
+//register every MsgOut, so we can verify later that they have been answered  
+
+  //initialize
+
+  if (not(isbound(v_portMap.init))) {v_portMap.init:=false}
+
+
+  if (not(v_portMap.init))
+  {
+
+    v_portMap.portStates[0].portRef:="port xxx";
+    v_portMap.portStates[0].connId:=-1;
+    v_portMap.portStates[0].state:=idle;
+    v_portMap.portStates[0].connState:=connected;
+    v_portMap.portStates[0].requestID:="";
+
+
+    v_portMap.firstFree:=-1;
+    v_portMap.init:=true;
+  }
+
+
+  //increment firstfree
+  v_portMap.firstFree:=v_portMap.firstFree+1;	
+
+
+
+  if   (  (v_portMap.firstFree == 0)
+    and 
+    (v_portMap.portStates[v_portMap.firstFree].state==idle)) //first msgOut  
+  {	
+    //record MsgOut parameters, set  state to sent		
+    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+    v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+    v_portMap.portStates[v_portMap.firstFree].state:=sent;
+    v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
+    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+
+    if(ispresent(p_msgout.primitive)){ 	
+      if(ischosen(p_msgout.primitive.requestPrimitive))
+      {
+        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      }//ischosen request
+      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
+
+    }//ispresent primitive	
+
+    p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;
+    port.setstate(0);  
+
+
+  }
+
+
+
+  if ( (v_portMap.firstFree-1 >= 0)
+
+    and  (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout) //msgOut already recorded
+
+    and   ( v_portMap.portStates[v_portMap.firstFree-1].state==postponed) 
+
+  )
+  {
+    //step back
+    v_portMap.firstFree:=v_portMap.firstFree-1;
+
+
+    log("msgOut already recorded  , now it has to be sent")	
+
+    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+    // v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+    v_portMap.portStates[v_portMap.firstFree].state:=sent;
+    v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
+    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+
+    if(ispresent(p_msgout.primitive)){ 	
+      if(ischosen(p_msgout.primitive.requestPrimitive))
+      {
+        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      }//ischosen request
+      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
+
+    }//ispresent primitive	
+
+
+    p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;
+    port.setstate(0);  	
+  }
+
+  else if (
+
+    (v_portMap.firstFree-1 >= 0)
+
+    and (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) //new msgOut , but reconnection was done
+
+    and  (isbound(v_portMap.portStates[v_portMap.firstFree].connState))
+    and (v_portMap.portStates[v_portMap.firstFree].connState==connected ) 
+
+  )
+
+  {    
+
+    log("new msgOut , but reconnection was done, so send it")
+
+    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+    //   v_portMap.portStates[v_portMap.firstFree].connId:=v_portMap.portStates[v_portMap.firstFree-1].connId;
+    v_portMap.portStates[v_portMap.firstFree].state:=sent;
+    v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
+    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+
+    if(ispresent(p_msgout.primitive)){ 	
+      if(ischosen(p_msgout.primitive.requestPrimitive))
+      {
+        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      }//ischosen request
+      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
+
+    }//ispresent primitive	
+
+
+    p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;		     
+
+    port.setstate(0);  
+
+  }
+
+
+
+  else if (
+
+    (v_portMap.firstFree-1 >= 0)
+
+    and (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) //new msgOut , has to be put on hold
+
+    and  (isbound(v_portMap.portStates[v_portMap.firstFree].connState))
+    and (not(v_portMap.portStates[v_portMap.firstFree].connState==connected ) )
+
+  )
+
+  {    
+
+    log("new msgOut , has to be put on hold")
+
+    if  (not(isbound(v_portMap.portStates[v_portMap.firstFree].state)))
+    {	
+      //if firstfree does not exist, initialize	
+      v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+      v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+      v_portMap.portStates[v_portMap.firstFree].state:=idle;
+      //   v_portMap.portStates[v_portMap.firstFree].connState:=connected;
+      v_portMap.portStates[v_portMap.firstFree].requestID:="";	  		
+
+    }
+
+    //record new msgOut
+
+    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+    v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+    v_portMap.portStates[v_portMap.firstFree].state:=postponed;
+    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+
+    if(ispresent(p_msgout.primitive)){ 	
+      if(ischosen(p_msgout.primitive.requestPrimitive))
+      {
+        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      }//ischosen request
+      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
+
+    }//ispresent primitive	
+
+    port.setstate(4);  
+
+
+  }
+
+
+  else {
+
+    log("?????????????????")
+
+    log("v_portMap   ", v_portMap)
+
+  }	
+
+
+
+
+  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
+} //endif connection_close   	 
+else  {     	
+  port.setstate(0);  
+
+}  	    
+} with {extension "prototype(fast)"} // End of Function
+
+/******************************************************
+* Function for mcaPort and mccPort decoding           *
+*******************************************************/
+function f_dec_ASPRecvFrom_to_M2MPrimitive(in ASP_RecvFrom p_aspRecvFrom, out MsgIn p_msgin) port OneM2MPort {
+var MsgIn v_msgIn;	
+var ResponsePrimitive v_responsePrimitive;  
+var ResponseStatusCode v_responseStatusCode;		
+
+// Variables for the Automated testing
+var RequestPrimitive v_requestPrimitive;
+var boolean v_resp_or_req := true; // 'true' means http resp, 'false' means http req 
+
+var MQTT_v3_1_1_Message v_mqttMsg;
+var ASP_RecvFrom v_ipl4Recv := p_aspRecvFrom;
+var octetstring v_aspRecv_msg;  
+var octetstring v_mqtt_payload;
+var charstring v_protocol_type 	:= f_upper2lower(PX_PROTOCOL_BINDING);
+var charstring v_serial_type 	:= f_upper2lower(PX_SERIALIZATION);     
+var charstring v_encoded_primitiveContent := "";
+var boolean enable_rsp_decode := true; // flag to enable response decoding operation
+var bitstring v_bitStream := ''B;
+
+if(ispresent(v_ipl4Recv.msg)){    	
+  v_aspRecv_msg := v_ipl4Recv.msg;
+  log(__SCOPE__&"v_ipl4Recv.msg(ispresent)");
+
+  if(HTTP_BINDING == v_protocol_type or COAP_BINDING == v_protocol_type){
+
+    if(HTTP_BINDING == v_protocol_type){
+
+      var HTTPRequest v_httpResq; // Variable for the automated testing
+
+      var HTTPMessage v_httpMsg;
+      var HTTPResponse v_httpResp;
+      var HeaderLines v_headerLines;
+      var HeaderLine v_header;
+      var charstring v_headerName  	:= "";
+      var charstring v_headerValue 	:= "";
+      var charstring v_httpRespBody 	:= "";  
+
+      //decoding HTTP message      	
+      var integer decode_state := dec_HTTPMessage(v_aspRecv_msg, v_httpMsg, tsp_socket_debugging);
+      log(__SCOPE__&"dec_HTTPMessage: return value (if equal to zero then all response are decoded): ", decode_state);
+
+      if(0 == decode_state){
+        log(__SCOPE__&"All message are decoded!!");
+
+        if(ischosen(v_httpMsg.response)) { // http response
+          log(__SCOPE__&"- We are in the http response message");
+          v_resp_or_req := true;   	
+          v_httpResp 	:= v_httpMsg.response;
+
+          if(ispresent(v_httpResp.header)){
+            v_headerLines 	:= v_httpResp.header;
+          } else {
+            port.setstate(1);
+          }
+
+          if(ispresent(v_httpResp.body)){
+            v_httpRespBody	:= v_httpResp.body; // body is optional	
+          } else {
+            log(__SCOPE__&"-no http body is received!!");}               		  	  
+        } else {
+          log(__SCOPE__&"-[ERROR]v_httpMsg.response(): No Response is included in the HTTPMessage !!");
+          v_responsePrimitive.primitiveContent := omit;
+        }               
+
+        if (ischosen(v_httpMsg.request)) { // http request
+          log(__SCOPE__&"- We are in the http request message");
+          v_resp_or_req := false;
+          v_httpResq 	:= v_httpMsg.request;
+
+          if(ispresent(v_httpResq.header)){
+            v_headerLines 	:= v_httpResq.header;
+          } else {
+            port.setstate(1);
+          }
+
+          if(ispresent(v_httpResq.body)){
+            v_httpRespBody	:= v_httpResq.body; //body is optional	
+          } else {
+            log(__SCOPE__&"-no http body is received!!");}  
+        } else {
+          log(__SCOPE__&"-[ERROR]v_httpMsg.request(): No Request is included in the HTTPMessage !!");
+          v_requestPrimitive.primitiveContent := omit;
+        }		  	
+
+        //decode headers
+        if(v_resp_or_req) { // response case
+          for(var integer i := 0; i < lengthof(v_headerLines); i := i + 1){               		  	  	  	  
+            v_header 		:= v_headerLines[i];
+            v_headerName 	:= v_header.header_name;
+            v_headerValue 	:= v_header.header_value;               		  		
+
+            if("X-M2M-RSC" == v_headerName){
+              log(__SCOPE__&"-[DEBUG] ENTER PARSING HTTP HEADERS!!");
+
+              if(not(RSC_OK == v_headerValue or RSC_CREATED == v_headerValue or RSC_UPDATED == v_headerValue or RSC_DELETED == v_headerValue )) {  
+                enable_rsp_decode := false;       		  		  	  
+              }
+
+              var integer v_rsc_int := str2int(v_headerValue);               		  		  	
+              int2enum(v_rsc_int, v_responseStatusCode);
+              v_responsePrimitive.responseStatusCode 	:= v_responseStatusCode; 
+            }
+
+            if("X-M2M-RI" == v_headerName){
+              v_responsePrimitive.requestIdentifier := v_headerValue;  		  		  
+            }
+          }
+
+          if(v_httpRespBody != "" and not enable_rsp_decode){
+            log(__SCOPE__&"-[ERROR]ERROR HTTP MESSAGE!!");
+          }
+
+          if(v_httpRespBody != "" and v_serial_type != "" and enable_rsp_decode){ //Only decode http response body when it is postive response message
+            v_encoded_primitiveContent := f_primitiveContent_Dec(v_httpRespBody, v_serial_type, ""); 
+            log(__SCOPE__&"-v_serial_type: ", v_serial_type);
+          }	  
+        } else { // request case
+          for(var integer i := 0; i < lengthof(v_headerLines); i := i + 1){               		  	  	  	  
+            v_header 		:= v_headerLines[i];
+            v_headerName 	:= v_header.header_name;
+            v_headerValue 	:= v_header.header_value;               		  		
+
+            if("X-M2M-RI" == v_headerName or "x-m2m-ri" == v_headerName){
+              v_requestPrimitive.requestIdentifier 	:= v_headerValue;  		  		  
+            }
+          }
+
+          if(v_httpRespBody != "" and not enable_rsp_decode){
+            log(__SCOPE__&"-[ERROR]ERROR HTTP MESSAGE!!");
+          }
+
+          if(v_httpRespBody != "" and v_serial_type != "" and enable_rsp_decode){ //Only decode http response body when it is postive response message
+            v_encoded_primitiveContent := f_primitiveContent_Dec(v_httpRespBody, v_serial_type, "noti_received"); 
+            log(__SCOPE__&"-v_serial_type: ", v_serial_type);
+          }
+        }			
+      } else { 
+        v_responsePrimitive.primitiveContent := omit;       		
+        log(__SCOPE__&"-[ERROR]dec_HTTPMessage(): fail to decode HTTP message!!");
+      }
+    } else if (COAP_BINDING == v_protocol_type) {              	   
+      var CoAP_Message v_coapMsg;
+      var CoAP_ReqResp v_coapReqResp;
+      var CoAP_Types.Header v_coapHeaderList;
+      var CoAP_OptionsList v_coapOptionList;
+      var octetstring v_coapPayload;  
+      var charstring v_coapRespBody := "";      	
+
+      var integer decode_state := f_CoAP_dec(v_aspRecv_msg, v_coapMsg);
+      log(__SCOPE__&"f_CoAP_dec: return value (if equal to zero then means all response are decoded): ", decode_state);
+
+      if(0 == decode_state){
+        log(__SCOPE__&"[f_CoAP_dec]-All message are decoded!!");
+
+        if(ischosen(v_coapMsg.msg)){	
+          v_coapReqResp 	:= v_coapMsg.msg;
+
+          //parse coap headers       		  	  	
+          if(ispresent(v_coapReqResp.header)) {
+            v_coapHeaderList := v_coapReqResp.header;
+          } else {
+            log(__SCOPE__&"-[oneM2MTester-WARNING] No CoAP_Types.Header is returned!!");
+          }
+
+          //parse coap options
+          if(ispresent(v_coapReqResp.options)) { 
+            var boolean RQI_option_flag := false;
+            var boolean RSC_option_flag := false;
+
+            v_coapOptionList := v_coapReqResp.options;       		  	  	 
+
+            for( var integer i := 0; i < lengthof(v_coapOptionList); i:= i +1 ){
+
+              if(ischosen(v_coapOptionList[i].oneM2M_RQI)) {
+                v_responsePrimitive.requestIdentifier := v_coapOptionList[i].oneM2M_RQI;
+                RQI_option_flag := true;               		  	  	  	  	  	
+              }
+
+              if(ischosen(v_coapOptionList[i].oneM2M_RSC)) {
+                RSC_option_flag := true;
+
+                var integer v_coapRSC := v_coapOptionList[i].oneM2M_RSC;  		               		  		  	
+                int2enum(v_coapRSC, v_responseStatusCode); 	
+                v_responsePrimitive.responseStatusCode 	:= v_responseStatusCode; 
+
+                var charstring v_coapRSC_tmp := int2str(v_coapRSC);
+
+                if(not(RSC_OK == v_coapRSC_tmp or RSC_CREATED == v_coapRSC_tmp or RSC_UPDATED == v_coapRSC_tmp or RSC_DELETED == v_coapRSC_tmp )){           		  		  	  
+                  enable_rsp_decode := false;       		  		  	  
+                }               		  	  	  	  	  		
+              }               		  	  	  	  	
+            }
+
+            if((not RSC_option_flag) or (not RQI_option_flag) or (not(RQI_option_flag and RSC_option_flag))){
+              log(__SCOPE__&"-[oneM2MTester-WARNING]-Mandatory option oneM2M_RQI option or oneM2M_RSC is missing!!");
+              setverdict(fail,"[oneM2MTester]-Mandatory CoAP option is not returned"); 
+              mtc.stop;
+            }
+          }             	
+
+          //parse coap payload
+          if(ispresent(v_coapReqResp.payload)){
+            v_coapPayload	:= v_coapReqResp.payload; //body is optional
+
+            v_coapRespBody := oct2char(v_coapPayload);
+
+            if(v_coapRespBody != "" and v_serial_type != "" and enable_rsp_decode) {
+              v_encoded_primitiveContent := f_primitiveContent_Dec(v_coapRespBody, v_serial_type, "");       		  	  	  	  
+            }       		  	  	  	
+          } else {
+            log(__SCOPE__&"-No Coap body!!!!");
+          }               		  	  	
+        } else {
+          log(__SCOPE__&"-[ERROR]v_coapMsg.msg(): No CoAP_ReqResp is included in the CoAP_Message response !!");
+          v_responsePrimitive.primitiveContent := omit;
+        }
+
+      } else {
+        log(__SCOPE__&"-[ERROR]f_CoAP_dec(): fail to decode coap message!!");
+        v_responsePrimitive.primitiveContent := omit;
+      }                
+    }
+
+    //decoding response message into MsgIn primitive
+    if(v_encoded_primitiveContent != ""){
+      log(__SCOPE__&"-v_encoded_primitiveContent(): ", v_encoded_primitiveContent);  				  	  				  	
+      v_bitStream := oct2bit(char2oct(v_encoded_primitiveContent));
+
+      log(__SCOPE__&"-v_bitStream(): : ", v_bitStream);
+
+      var integer dec_state_int := -1;
+
+      if(enable_rsp_decode){  
+        if(JSON_SERIAL == v_serial_type){				  	  
+          if(v_resp_or_req) { // response
+            dec_state_int := f_dec_JSON_resourcePrimitive(char2oct(v_encoded_primitiveContent), v_responsePrimitive.primitiveContent);
+          } else { // request 
+            dec_state_int := f_dec_JSON_resourcePrimitive(char2oct(v_encoded_primitiveContent), v_requestPrimitive.primitiveContent);
+          }		
+
+          if(0 == dec_state_int){              				  	  
+            log(__SCOPE__&"-f_dec_JSON_resourcePrimitive(): decode suceeded!!: ", dec_state_int);  
+          } else {
+            log(__SCOPE__&"-f_dec_JSON_resourcePrimitive(): decode failed!!: ", dec_state_int);
+            setverdict(fail,"[Titan Codec]Received protocol messages could not be decoded successfully"); 
+            mtc.stop;
+          }
+        } else if(XML_SERIAL == v_serial_type) {
+          //decoding primitiveContent
+          dec_state_int := f_dec_XER_resourcePrimitive(char2oct(v_encoded_primitiveContent), v_responsePrimitive.primitiveContent);
+
+          if(0 == dec_state_int) {
+            log(__SCOPE__&"-f_dec_XER_resourcePrimitive(): decode suceeded!!: ", dec_state_int); 
+          } else {
+            log(__SCOPE__&"-f_dec_XER_resourcePrimitive(): decode failed!!: ", dec_state_int);
+            setverdict(fail,"[Titan Codec]Received protocol messages could not be decoded successfully"); 
+            mtc.stop;
+          }
+        } 
+      } else {	
+        log(__SCOPE__&"-[oneM2MTester_DEBUG]enable_rsp_decode(false): Not decode oneM2M resource primitive!!");			  	
+        v_responsePrimitive.primitiveContent := omit;				  	
+      }	  			  
+    } else {
+      log(__SCOPE__&"-[Decoding Parsing ERROR]f_primitiveContent_Dec(): PrimitiveContent object parsing failed!!");
+      v_responsePrimitive.primitiveContent := omit;
+    }      	  
+  } else {
+    port.setstate(1);
+  }
+
+  //set response or request attribute 	
+  if(v_resp_or_req) {
+    log(__SCOPE__&"-Setting the response message");
+    v_responsePrimitive.to_ 						:= PX_AE1_ID_STEM;
+    v_responsePrimitive.from_						:= PX_CSE_NAME;
+    v_responsePrimitive.originatingTimestamp 		:= omit;
+    v_responsePrimitive.resultExpirationTimestamp 	:= omit;
+    v_responsePrimitive.eventCategory 				:= omit;
+
+    //set MsgIn
+    v_msgIn.primitive.responsePrimitive := v_responsePrimitive;
+    v_msgIn.nullFields := omit;
+    p_msgin := v_msgIn;
+
+    if (connection_close)
+    {					
+      //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
+      // see if the incoming message is a response to a previously  sent MsgOut (has the same request Id) and if yes, set the state to idle, 
+      //marking that MsgOut has been answered 				
+
+      for (var integer i:=lengthof(v_portMap.portStates)-1; i > -1;i:=i-1)
+      {
+
+        if(match(p_msgin.primitive.responsePrimitive.requestIdentifier,v_portMap.portStates[i].requestID))
+        {
+
+          v_portMap.portStates[i].portRef:=log2str(port.getref());
+          //    v_portMap.portStates[i].connId:=-1;
+          v_portMap.portStates[i].state:=idle;
+          //v_portMap.portStates[i].connState:=waitForClose;
+          //  v_portMap.portStates[i].requestID:="";			
+
+          log("Hit!!!!!")
+          break;
+        }
+
+      }//endfor		
+
+      //prepare next record	
+      v_portMap.portStates[v_portMap.firstFree+1].portRef:=log2str(port.getref());
+      // v_portMap.portStates[v_portMap.firstFree+1].connId:=v_result.connId;
+      v_portMap.portStates[v_portMap.firstFree+1].state:=idle;
+      v_portMap.portStates[v_portMap.firstFree+1].connState:=waitForClose;
+      v_portMap.portStates[v_portMap.firstFree+1].requestID:="";	 
+
+
+
+      //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
+    }	//endif conn close		
+
+  } else {
+    log(__SCOPE__&"-Setting the request message");
+    /*  We manually put the several values to the attributes
+    *  To manage both notification and ae testing,
+    *  we hvae to parse the several field to make notification and ae tseting branch 
+    */
+
+    //set MsgIn
+    v_requestPrimitive.operation := int5 // AE: int1;
+    v_requestPrimitive.from_ := omit;
+    v_requestPrimitive.to_ := "Mobius";
+    v_requestPrimitive.role := omit;
+    v_requestPrimitive.resourceType := omit // AE: int3;
+    v_requestPrimitive.originatingTimestamp := omit;
+    v_requestPrimitive.requestExpirationTimestamp := omit;
+    v_requestPrimitive.resultExpirationTimestamp := omit;
+    v_requestPrimitive.operationExecutionTime := omit;
+    v_requestPrimitive.responseType := omit;
+    v_requestPrimitive.resultPersistence := omit;
+    v_requestPrimitive.resultContent := omit; 
+    v_requestPrimitive.eventCategory := omit; 
+    v_requestPrimitive.deliveryAggregation := omit;
+    v_requestPrimitive.groupRequestIdentifier := omit;
+    v_requestPrimitive.filterCriteria := omit;
+    v_requestPrimitive.discoveryResultType := omit;
+
+    v_msgIn.primitive.requestPrimitive := v_requestPrimitive;
+    f_setConId_mcaPortIn(p_aspRecvFrom.connId);
+    v_msgIn.nullFields := omit;
+    p_msgin := v_msgIn; 
+  }
+  port.setstate(0);
+} else {
+  port.setstate(1);
+}
+} with {extension "prototype(fast)"} // End of Function
+
+
+/******************************************************
+* Function for utPort encoding                        *
+*******************************************************/
+function f_enc_M2MPrimitive_to_ASPSend_for_trigger(in UtTriggerPrimitive p_msgout, out ASP_Send p_asp_Send) port UpperTesterPort {
+var RequestPrimitive v_reqPrimitive;           
+var charstring 		v_from				:= ""; 
+var charstring 		v_to				:= ""; 
+var charstring 		v_reqID				:= ""; 
+var integer 		v_ty;                      
+
+var charstring 		v_contentType;  
+var octetstring 	v_encoded_msg; 
+var charstring 		v_serial_type;
+var charstring 		v_payload 			:= "";
+var ConnectionId 	connectId_init 		:= -1;
+
+var HTTPRequest v_httpReqMsg;
+var HTTPMessage v_httpMsgToSend;
+var charstring v_accept;
+
+v_reqPrimitive := p_msgout.requestPrimitive;
+
+// to 
+if(ispresent(v_reqPrimitive.to_)){
+  v_to := "/"; //oct2char(unichar2oct(v_reqPrimitive.to_));
+  log(__SCOPE__&"-to", v_to); 
+}
+
+// from
+if(ispresent(v_reqPrimitive.from_)) {
+  v_from := oct2char(unichar2oct(v_reqPrimitive.from_));          
+}
+
+// requestIdentifier
+if(ispresent(v_reqPrimitive.requestIdentifier)) {
+  v_reqID	:= oct2char(unichar2oct(v_reqPrimitive.requestIdentifier));  
+}
+
+// resourceType
+if(ispresent(v_reqPrimitive.resourceType)) {
+  v_ty := enum2int(v_reqPrimitive.resourceType); 
+}
+
+// primitiveContent
+if(ispresent(v_reqPrimitive.primitiveContent)) {
+  var bitstring v_bit_stream := encvalue(v_reqPrimitive.primitiveContent);
+
+  if(v_bit_stream != ''B) {
+    var charstring v_char_streamTest := oct2char(bit2oct(v_bit_stream));
+    log(__SCOPE__&" v_char_streamTest ", v_char_streamTest);
+  } 
+}     	
+
+//assemble accept with serialization type
+v_accept 		:= "application/json";
+v_contentType	:= "application/json";
+v_serial_type   := "json";
+
+//original payload with long name representation
+v_payload := f_encode_requestPrimitive_for_trigger_msg(v_reqPrimitive); log(__SCOPE__&"-v_payload: ", v_payload);
+
+//serialized payload with short name representation
+if(v_payload != ""){		log(__SCOPE__& "[DEBUG] _____CHECK HERE !!!_____________________");							  
+  v_payload := f_serialization_Enc_for_trigger_msg(v_payload); 
+} else {
+  log(__SCOPE__ &"-[]WARNING]f_encode_requestPrimitive: payload is NULL\n"); 
+}	     						     		
+v_httpReqMsg := valueof(t_HTTP_POST_request(connectId_init, v_to, v_accept, v_from, v_reqID, v_contentType, v_payload));   	  	                                  	  
+
+//Generate IPL4ASP message 
+v_httpMsgToSend := {
+  request:= v_httpReqMsg	
+}
+
+v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend); 
+
+p_asp_Send.connId	:= connectId_init;				
+p_asp_Send.proto 	:= {tcp := {}};
+p_asp_Send.msg 		:= v_encoded_msg;
+
+} with {extension "prototype(fast)"}
+
+/******************************************************
+* Function for utPort decoding                        *
+*******************************************************/
+function f_dec_ASPRecvFrom_to_M2MPrimitive_for_trigger(in ASP_RecvFrom p_aspRecvFrom, out UtTriggerAckPrimitive p_msgin) port UpperTesterPort {
+
+var octetstring v_aspRecv_msg;  
+var UtTriggerAckPrimitive v_msgIn;
+var boolean enable_rsp_decode := true; //flag to enable response decoding operation
+var ASP_RecvFrom v_ipl4Recv := p_aspRecvFrom;
+
+if(ispresent(v_ipl4Recv.msg)){    	
+  v_aspRecv_msg := v_ipl4Recv.msg;
+  log(__SCOPE__&"v_ipl4Recv.msg(ispresent)");
+
+  var HTTPMessage v_httpMsg;
+  var HTTPResponse v_httpResp;
+  var HeaderLines v_headerLines;
+  var HeaderLine v_header;
+  var charstring v_headerName  	:= "";
+  var charstring v_headerValue 	:= "";
+  var charstring v_httpRespBody 	:= "";  
+
+  //decoding HTTP message      	
+  var integer decode_state := dec_HTTPMessage(v_aspRecv_msg, v_httpMsg, tsp_socket_debugging);
+  log(__SCOPE__&"dec_HTTPMessage: return value (if equal to zero then all response are decoded): ", decode_state);
+
+  if(0 == decode_state){
+    log(__SCOPE__&"All message are decoded!!");
+
+    if(ischosen(v_httpMsg.response)) {  	
+      v_httpResp 	:= v_httpMsg.response;
+
+      if(ispresent(v_httpResp.header)){ // Parsing HTTP headers
+        v_headerLines 	:= v_httpResp.header;
+      } else {
+        port.setstate(1);
+      }
+
+      if(ispresent(v_httpResp.body)){ // Parsing HTTP body
+        v_httpRespBody	:= v_httpResp.body; // Message body is optional	
+      } else {
+        log(__SCOPE__&"-no http body is received!!");
+      }               		  	  
+    } else {
+      log(__SCOPE__&"-[ERROR]v_httpMsg.response(): No Response is included in the HTTPMessage !!");
+      v_msgIn.primitiveContent := omit;
+    }               		  	
+
+    //decode headers
+    //set X-M2M-RSC and X-M2M-RI
+    for(var integer i := 0; i < lengthof(v_headerLines); i := i + 1){               		  	  	  	  
+      v_header 		:= v_headerLines[i];
+      v_headerName 	:= v_header.header_name;
+      v_headerValue 	:= v_header.header_value;               		  		
+
+      if("X-M2M-RSC" == v_headerName){ // Checking HTTP response
+        log(__SCOPE__&"-[DEBUG] ENTER PARSING HTTP HEADERS!!");
+
+        if(not(RSC_OK == v_headerValue or RSC_CREATED == v_headerValue or RSC_UPDATED == v_headerValue or RSC_DELETED == v_headerValue )) {  
+          enable_rsp_decode := false;       		  		  	  
+        }
+
+        var ResponseStatusCode v_responseStatusCode;	  
+        var integer v_rsc_int := str2int(v_headerValue);               		  		  	
+        int2enum(v_rsc_int, v_responseStatusCode);
+        v_msgIn.responseStatusCode 	:= v_responseStatusCode; 
+      }
+
+      if("X-M2M-RI" == v_headerName){
+        v_msgIn.requestIdentifier 	:= v_headerValue;  		  		  
+      }
+    }
+
+    if(v_httpRespBody != "" and not enable_rsp_decode){
+      log(__SCOPE__&"-[ERROR]ERROR HTTP MESSAGE!!");
+    }
+
+    if(v_httpRespBody != ""  and enable_rsp_decode){ // Only decode http response body when it is postive response message
+      // v_encoded_primitiveContent := f_primitiveContent_Dec(v_httpRespBody, "json"); 
+    }			
+  } else { 
+    v_msgIn.primitiveContent := omit;       		
+    log(__SCOPE__&"-[ERROR]dec_HTTPMessage(): fail to decode HTTP message!!");
+  }
+}
+
+// Set optional attributes for responsePrimitive
+v_msgIn.requestIdentifier 			:= "temp_identifier"; 
+v_msgIn.primitiveContent 			:= omit;
+v_msgIn.to_                         := omit;                                             
+v_msgIn.from_                       := omit;                                        
+v_msgIn.originatingTimestamp        := omit;
+v_msgIn.resultExpirationTimestamp   := omit;
+v_msgIn.eventCategory               := omit;
+
+p_msgin := v_msgIn;
+
+port.setstate(0);
+} with {extension "prototype(fast)"}
+
+function f_discardASPEvent(in ASP_Event p_aspEventIn, out ASP_Event p_aspEventOut) {
+port.setstate(2);
+} with {extension "prototype(fast)"}
+
+
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+function f_handleASPEvent(in ASP_Event p_aspEventIn, out ASP_Event p_aspEventOut) port OneM2MPort  {
+
+
+
+//handle port events
+
+if (match(p_aspEventIn, t_connOpened)){
+  //connOpened should only be received on listening ports  	
+  var f_IPL4_getMsgLen getMsg_Func;
+
+  if(PX_PROTOCOL_BINDING=="HTTP")
+  {    	
+
+    //--------------------------------------------------------------------------
+    getMsg_Func := refers(f_HTTP_Message_len);
+    IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),p_aspEventIn.connOpened.connId, getMsg_Func, {});
+    //--------------------------------------------------------------------------			  	
+
+  } //ende else if http   	
+  else if  (PX_PROTOCOL_BINDING=="MQTT") {
+
+    //--------------------------------------------------------------------------
+    getMsg_Func := refers(f_GetMsgLengthMQTT);
+    IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),p_aspEventIn.connOpened.connId, getMsg_Func, {});
+    //--------------------------------------------------------------------------	
+
+
+  }//endelse if mqtt
+  //	else {}  //for CoAP this is not required, as CoAP assumes UDP
+
+}//endif connOpened
+
+//--------------------------------------------------------------------------  	
+else if(match(p_aspEventIn, t_connClosed)) {
+  //--------------------------------------------------------------------------
+
+  log("------------connClosed")	
+
+  if (connection_close) 
+  {	
+
+    if ( (log2str(port.getref()) != "port mcaPortIn") or 
+      (log2str(port.getref()) != "port mccPortIn")) 
+
+    //if  connection is closed on a non-listening ports, reconnect   	
+    {
+
+
+      var f_IPL4_getMsgLen getMsg_Func;
+
+      var IPL4asp_Types.Result  v_result:=	IPL4asp_User_CtrlFunct.f_IPL4_connect (port.getref(), p_aspEventIn.connClosed.remName,p_aspEventIn.connClosed.remPort,"",0,-1 /*p_aspEventIn.connClosed.connId*/,p_aspEventIn.connClosed.proto,{})
+
+      log("v_result connect   ",v_result)
+
+      //register message length function
+      if(PX_PROTOCOL_BINDING=="HTTP")
+      {    	
+
+        //--------------------------------------------------------------------------
+        getMsg_Func := refers(f_HTTP_Message_len);
+        IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),v_result.connId, getMsg_Func, {});
+        //--------------------------------------------------------------------------			  	
+
+      } //ende else if http   	
+      else if  (PX_PROTOCOL_BINDING=="MQTT") {
+
+        //--------------------------------------------------------------------------
+        getMsg_Func := refers(f_GetMsgLengthMQTT);
+        IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),v_result.connId, getMsg_Func, {});
+        //--------------------------------------------------------------------------	
+
+
+      }//endelse if mqtt
+
+      //	else {}  //for CoAP this is not required, as CoAP assumes UDP
+
+
+      //initialize the next record 		
+      v_portMap.portStates[v_portMap.firstFree+1].portRef:=log2str(port.getref());
+      v_portMap.portStates[v_portMap.firstFree+1].connId:=v_result.connId;
+      v_portMap.portStates[v_portMap.firstFree+1].state:=idle;
+      v_portMap.portStates[v_portMap.firstFree+1].connState:=connected;
+      v_portMap.portStates[v_portMap.firstFree+1].requestID:="";	 
+
+
+      for (var integer i:=lengthof(v_portMap.portStates) -1; i> -1;i:=i-1)
+      {
+
+        if(v_portMap.portStates[i].state==postponed)
+        {
+
+          v_portMap.portStates[i].portRef:=log2str(port.getref());
+          v_portMap.portStates[i].connId:=v_result.connId; 
+
+
+          log("Hit hit!!!!!", v_portMap.portStates[i].connId)
+
+
+          port.send(v_portMap.portStates[i].msgOut)  //resend saved MsgOut
+
+        }//endif
+
+      }//endfor
+
+
+    }//if not "incoming" port
+  }//endif connection_close
+}//endif connClosed	   	
+
+
+//--------------------------------------------------------------------------  	
+else if( match(p_aspEventIn, t_error)) {
+  //--------------------------------------------------------------------------  
+  log("t_error  ",t_error)
+
+}  	
+
+
+else {
+
+  //other port events are discarded for the moment
+}//endelse  
+
+
+port.setstate(4);
+} with {extension "prototype(fast)"}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
+
+//---------------------------------------------------------------------	
+
+function f_handleASPEvent_trigger(in ASP_Event p_aspEventIn, out ASP_Event p_aspEventOut) port UpperTesterPort {
+
+
+port.setstate(4);
+} with {extension "prototype(fast)"}
+
+
+//---------------------------------------------------------------------
+
+
+function f_applyForcedAttribute(PrimitiveContent p_contentResource, AttributeAux_list p_forcedFields) return PrimitiveContent {
+
+if(ischosen(p_contentResource.accessControlPolicy)) {
+  //p_contentResource.accessControlPolicy;
+}
+
+if(ischosen(p_contentResource.container)) {
+
+  //p_contentResource.container;
+  for(var integer i:=0; i < lengthof(p_forcedFields); i:=i+1) {
+
+    if(p_forcedFields[i].name == "maxByteSize") {
+      p_contentResource.container.maxByteSize := str2int(p_forcedFields[i].value_);
+    }
+
+    if(p_forcedFields[i].name == "maxNrOfInstances") {
+      p_contentResource.container.maxNrOfInstances := str2int(p_forcedFields[i].value_);
+    }
+
+    if(p_forcedFields[i].name == "maxInstanceAge") {
+      p_contentResource.container.maxInstanceAge := str2int(p_forcedFields[i].value_);
+    }
+  }
+}
+
+if(ischosen(p_contentResource.contentInstance)) {
+  //p_contentResource.contentInstance;
+}
+
+if(ischosen(p_contentResource.schedule)) {
+  //p_contentResource.schedule;
+}
+
+if(ischosen(p_contentResource.pollingChannel)) {
+  //p_contentResource.pollingChannel;
+}
+
+if(ischosen(p_contentResource.subscription)) {
+  //p_contentResource.subscription;
+}
+
+if(ischosen(p_contentResource.group_)) {
+  //p_contentResource.group_;
+}
+
+if(ischosen(p_contentResource.aE)) {
+  //p_contentResource.aE;
+}
+
+if(ischosen(p_contentResource.serviceSubscribedAppRule)) {
+  //p_contentResource.serviceSubscribedAppRule;
+}
+
+if(ischosen(p_contentResource.remoteCSE)) {
+  //p_contentResource.remoteCSE;
+}
+
+log(__SCOPE__&":WARNING: Primitive Content Kind not implemented");
+
+return p_contentResource;
+}
+//} // End_of_module

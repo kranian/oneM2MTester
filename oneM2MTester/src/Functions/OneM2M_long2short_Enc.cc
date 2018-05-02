@@ -33,7 +33,7 @@
 #include "tinyxml2.h"
 #include "json-forwards.h"
 #include "External_function.hh"
-#include "OneM2M_DualFaceMapping.hh"
+#include "OneM2M_Ports.hh"
 
 using namespace tinyxml2;
 using namespace Json;
@@ -45,7 +45,7 @@ struct MyKeyHash {
 	}
 };
 
-namespace OneM2M__DualFaceMapping {
+namespace OneM2M__Ports {
 
 	int connectionID = 0;
 
@@ -589,21 +589,6 @@ namespace OneM2M__DualFaceMapping {
 
 		CHARSTRING tmp_str(str_source.c_str());
 		return tmp_str;	
-	}
-
-	CHARSTRING f__adressingFormatChecker(const CHARSTRING& p__source){
-		const char* cs_temp  = (const char*)p__source;
-		std::string str_source(cs_temp);
-
-		if(str_source[0] == '/' && str_source[1] == '/') {
-			return "ABSOLUTE";
-		}
-
-		if(str_source[0] == '/') {
-			return "SPRELATIVE";
-		} else {
-			return "CSERELATIVE";
-		}
 	}
 
 	/**
