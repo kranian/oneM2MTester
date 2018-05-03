@@ -112,6 +112,21 @@ namespace OneM2M__Ports {
 		return s_str;
 	}
 
+	CHARSTRING f__adressingFormatChecker(const CHARSTRING& p__source){
+		const char* cs_temp  = (const char*)p__source;
+		std::string str_source(cs_temp);
+
+		if(str_source[0] == '/' && str_source[1] == '/') {
+			return "ABSOLUTE";
+		}
+
+		if(str_source[0] == '/') {
+			return "SPRELATIVE";
+		} else {
+			return "CSERELATIVE";
+		}
+	}
+
 	/**
 	 * @desc Serialize oneM2M request/responsePrimitives
  	 * @p__source: primitiveContent

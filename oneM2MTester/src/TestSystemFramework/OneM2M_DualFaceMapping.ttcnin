@@ -1,24 +1,21 @@
 /****************************************************************************************
-* Copyright (c) 2017  Korea Electronics Technology Institute.							*
+* Copyright (c) 2018  Korea Electronics Technology Institute.							*
 * All rights reserved. This program and the accompanying materials						*
 * are made available under the terms of                                         		*
 * - Eclipse Public License v1.0(http://www.eclipse.org/legal/epl-v10.html),     		*
 * - BSD-3 Clause Licence(http://www.iotocean.org/license/),                    			* 
 * - MIT License   (https://github.com/open-source-parsers/jsoncpp/blob/master/LICENSE), * 
 * - zlib License  (https://github.com/leethomason/tinyxml2#license).                    *	
-*																						*
+*                                                                                       *												
+* Description:	                                                                        * 
+*   OneM2M_DualFaceMapping.ttcnin  	                                                    *
+*   Encode and decode oneM2M data types to/from protocol binding message                *
+*										                                                *   
 * Contributors:		                                                                    *
 *   JaeYoung Hwang - forest62590@gmail.com                                              *
-*   NakMyoung Sung - diesnm201@gmail.com												*
-*   Ting Martin MIAO - initial implementation                                   		*
-*                                                                               		*                                                        		
+*   NakMyoung Sung - dienms201@gmail.com												*
+*   Ting Martin MIAO - initial implementation                                   		*                                                     		
 ****************************************************************************************/
-
-// Description:																	
-// OneM2M_DualFaceMapping.ttcn  														
-// Encode and decode OneM2M data types to/from protocol binding message
-
-//module OneM2M_DualFaceMapping {
 
 // Module dependencies
 import from Mqtt_v3_1_1_Types all;
@@ -26,7 +23,6 @@ import from Mqtt_v3_1_1_IPL4SizeFunction all;
 import from CoAP_Types all;
 import from HTTPmsg_Types all;
 import from HTTPmsg_MessageLen all;
-
 import from IPL4asp_Types all;
 import from OneM2M_Types all;
 import from OneM2M_Primitive_EncDec all;
@@ -35,488 +31,460 @@ import from OneM2M_Pixits all;
 import from oneM2MTester_Template all;
 import from IPL4asp_User_CtrlFunct all;
 
-
-modulepar  boolean connection_close:=false;
-
 // External functions
 external function f_extract_from_string(in charstring p_source) return charstring;
 external function f_primitiveContent_Dec(in charstring p_source, in charstring p_serialization_type, in charstring p_noti_received) return charstring;
 external function f_upper2lower(in charstring p_string) return charstring;
-
-//Serialization encoding for XML, JSON 
 external function f_serialization_Enc(in charstring p_source, in charstring p_serialization_type, in AttributeAux_list p_forcedFields) return charstring;
 external function f_serialization_Enc_for_trigger_msg(in charstring p_source) return charstring;
 external function f_split(in charstring p_cs, in charstring p_delim) return charstring;
 external function f_split_uri(in charstring p_cs, in charstring p_delim) return Charstring_List;
 external function f_replace(in charstring p_source, in charstring p_str1, in charstring p_str2) return charstring;
 external function f_adressingFormatter(in charstring p_source, in charstring p_str1, in charstring p_str2) return charstring;
+external function f_adressingFormatChecker(in charstring p_source) return charstring;
 
 // Function to handle the connection id used in mcaPortIn
 external function f_getConId_mcaPortIn() return integer;
 external function f_setConId_mcaPortIn(in integer mca_port_in_conID);
 
-
+// Module parameter for
+modulepar boolean connection_close := false;
 
 type record PortState {
-charstring  portRef,  
-integer     connId,
-MsgState    state,
-ConnState   connState,
-//  MsgGetLenState lenState,
-MsgOut      msgOut,
-RequestID   requestID     
+	charstring  portRef,  
+	integer     connId,
+	MsgState    state,
+	ConnState   connState,
+	MsgOut      msgOut,
+	RequestID   requestID
+	//  MsgGetLenState lenState     
 } 
-
 
 type record of PortState PortStates;
 
-
 type record PortMap  {  
-PortStates  portStates ,
-integer    firstFree, 
-boolean    init
+	PortStates  portStates ,
+	integer    firstFree, 
+	boolean    init
 }
-
 
 type enumerated  MsgState {idle, sent, postponed }	
-// type enumerated  MsgGetLenState { stateSet, stateUnset }	
 type enumerated  ConnState { connected, waitForClose }	
+// type enumerated  MsgGetLenState { stateSet, stateUnset }	
 
-
-
-
+// Templates to handle the connection flows
 template PortEvent t_connClosed:={
-connClosed:={
-  connId:=?,
-  remName:=?,
-  remPort:=?,
-  locName:=?,
-  locPort:=?,
-  proto:=?,
-  userData:=?	 
-
-}	
+	connClosed:={
+		connId:=?,
+		remName:=?,
+		remPort:=?,
+		locName:=?,
+		locPort:=?,
+		proto:=?,
+		userData:=?	 
+	}	
 } 
 
-
-template PortEvent t_connOpened:=
-{ connOpened := 
-{ 
-  connId := ?, 
-  remName := ?, 
-  remPort := ?, 
-  locName := ?, 
-  locPort := ? , 
-  proto := { tcp := { } }, 
-  userData := 0 
-} 
+template PortEvent t_connOpened := {
+	connOpened := { 
+		connId := ?, 
+  		remName := ?, 
+  		remPort := ?, 
+  		locName := ?, 
+  		locPort := ? , 
+  		proto := { tcp := { } }, 
+  		userData := 0 
+	} 
 }
 
-
-template PortEvent t_error:=
-{ 
-result := 
-{ errorCode := ?, 
-  connId := ?, 
-  os_error_code := *, 
-  os_error_text := * 
-} 
+template PortEvent t_error := { 
+	result := {
+		errorCode := ?, 
+ 		connId := ?, 
+  		os_error_code := *, 
+  		os_error_text := * 
+	} 
 }
 
-
-
-//*************************************************************************
-function f_HTTP_Message_len(  in octetstring stream,   inout ro_integer args) return integer
-//*************************************************************************
-{    
-return f_HTTPMessage_len(stream) ;                 
+function f_HTTP_Message_len(in octetstring stream, inout ro_integer args) return integer {    
+	return f_HTTPMessage_len(stream);                 
 }
-
-
 
 /******************************************************
 * Function for mcaPort and mccPort encoding           *
 *******************************************************/
 function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Send)  port OneM2MPort {
-var charstring 		v_protocol_type 	:= "";
-var charstring 		v_serial_type 		:= "";   
-var charstring 		v_payload 			:= "";
-var octetstring 	v_encoded_msg; 
-var RequestPrimitive v_reqPrimitive;
-var integer 		v_resultContent;  
-var integer 		v_operation;
-var charstring 		v_from				:= "";
-var charstring 		v_to				:= "";
-var charstring 		v_reqID				:= "";
-var integer 		v_ty;
-var charstring 		v_uri 				:= "{UNINITIALIZED}";
-var integer 		v_len 				:= 0;     
-var Charstring_List csList;                
-var charstring 		v_contentType;  		
-var ConnectionId 	connectId_init 		:= -1;
+	var charstring 		v_protocol_type 	:= "";
+    var charstring 		v_serial_type 		:= "";   
+    var charstring 		v_payload 			:= "";
+    var octetstring 	v_encoded_msg; 
+    var RequestPrimitive v_reqPrimitive;
+    var integer 		v_resultContent;  
+    var integer 		v_operation;
+    var charstring 		v_from				:= "";
+    var charstring 		v_to				:= "";
+    var charstring 		v_reqID				:= "";
+    var integer 		v_ty;
+    var charstring 		v_uri 				:= "{UNINITIALIZED}";
+    var integer 		v_len 				:= 0;     
+    var Charstring_List csList;                
+    var charstring 		v_contentType;  		
+    var ConnectionId 	connectId_init 		:= -1;
 
-//get protocol binding type and convert it to lowercase 
-if(ispresent(p_msgout.protocolBinding)){
-  v_protocol_type := f_upper2lower(p_msgout.protocolBinding);
-  log(__SCOPE__&"-Input Protocol Type: ", v_protocol_type); 
-}
-
-//get serialization type and convert it to lowercase
-if(ispresent(p_msgout.serialization)){  
-  v_serial_type := f_upper2lower(p_msgout.serialization);
-  log(__SCOPE__&"-Input Serial Type: ", v_serial_type);   	   		
-}  
-
-if(ispresent(p_msgout.primitive)){ 	  
-  if(ischosen(p_msgout.primitive.requestPrimitive)){
-
-    v_reqPrimitive := p_msgout.primitive.requestPrimitive; 
-
-    //test encvalue(primitiveContent) to be removed  
-    if(ispresent(v_reqPrimitive.primitiveContent)) {
-
-      // @TaeHyun Kim, thyun.kim@synctechno.com
-      // forcedFields 
-      if(ispresent(p_msgout.forcedFields)){
-        v_reqPrimitive.primitiveContent := f_applyForcedAttribute(v_reqPrimitive.primitiveContent, p_msgout.forcedFields);        
-        log(__SCOPE__&"-Input Forced Fields: ", p_msgout.forcedFields); 
-      }	
-
-      /* var bitstring v_bit_stream := encvalue(v_reqPrimitive.primitiveContent);
-
-      if(v_bit_stream != ''B) {
-      var charstring v_char_streamTest := oct2char(bit2oct(v_bit_stream));
-      log(__SCOPE__&" v_char_streamTest ", v_char_streamTest);
-      } */   		        		    
+    // get protocol binding type and convert it to lowercase 
+    if(ispresent(p_msgout.protocolBinding)){
+		v_protocol_type := f_upper2lower(p_msgout.protocolBinding);
+		log(__SCOPE__&"-Input Binding Protocol Type: ", v_protocol_type); 
     }
 
-    //operation attribute
-    if(ispresent(v_reqPrimitive.operation)) {
-      v_operation	:= enum2int(v_reqPrimitive.operation);                      
-    }
+	// get serialization type and convert it to lowercase
+	if(ispresent(p_msgout.serialization)){  
+  		v_serial_type := f_upper2lower(p_msgout.serialization);
+  		log(__SCOPE__&"-Input Serialization Type: ", v_serial_type);   	   		
+	}  
 
-    //from attribute
-    if(ispresent(v_reqPrimitive.from_)) {
-      v_from := oct2char(unichar2oct(v_reqPrimitive.from_));       
-
-      if(v_from == "UnknowOriginator") {
-        v_from := "C" & v_from;  
-      }	                    
-    }
-
-    //parse requestPrimitive to_ attribute and generate protocol target URL
-    if(ispresent(v_reqPrimitive.to_)) {
-      v_to := oct2char(unichar2oct(v_reqPrimitive.to_)); 
-      v_uri := v_to;  
-
-      if(PX_PRIMITIVE_SCOPE == e_spRelative){
-        v_uri := "/~" & v_to;	
-        log(__SCOPE__&"-f_adressingFormatter(Sp-relative):", v_uri);
-      } else if (PX_PRIMITIVE_SCOPE == e_cseRelative){
-        v_uri := "/" & v_to;
-        log(__SCOPE__&"-f_adressingFormatter(CSE-relative):", v_uri);	  		  
-      } else if (PX_PRIMITIVE_SCOPE == e_absolute){
-        v_uri := f_adressingFormatter(v_to, "/", "/_");
-
-        var AddressingMethod p_addressingMethod := PX_ADDRESSING_METHOD;
-
-        if (ischosen(v_reqPrimitive.primitiveContent.aE) and p_addressingMethod == e_nonHierarchical){
-          v_uri := v_uri & "/" & PX_CSE_RESOURCE_ID;	 
-        }
-
-        log(__SCOPE__&"-f_adressingFormatter(Absolute-relative):", v_uri); 
-      }	         		
-    }
-
-    //resource type attribute
-    if(ispresent(v_reqPrimitive.resourceType)){
-      v_ty := enum2int(v_reqPrimitive.resourceType);                         
-    }
-
-    //requestIdentifier attribute
-    if(ispresent(v_reqPrimitive.requestIdentifier)){
-      v_reqID	:= oct2char(unichar2oct(v_reqPrimitive.requestIdentifier));                         
-    }
-
-    //resultContent attribute
-    if(ispresent(v_reqPrimitive.resultContent)){
-      v_resultContent	:= enum2int(v_reqPrimitive.resultContent); 
-
-      if(HTTP_BINDING == v_protocol_type){
-        v_uri := v_uri & "?rcn=" & int2str(v_resultContent);                  		  
-      }          		                        
-    }
-
-    // FiterCriteria
-    if(ispresent(v_reqPrimitive.filterCriteria)) {
-
-      // filterUsage value can be 1 or 2  
-      if(ispresent(v_reqPrimitive.filterCriteria.filterUsage) and (2 == v_operation)) {
-        var integer filterUsageValue := enum2int(v_reqPrimitive.filterCriteria.filterUsage);
-
-        if(filterUsageValue == 1) {
-          v_uri := v_uri & "?fu=1";  
-        } else if(filterUsageValue == 2) {
-          v_uri := v_uri & "?fu=2";  
-        }
-      }
-
-      if(ispresent(v_reqPrimitive.discoveryResultType)) {
-        var integer discoveryResultTypeValue := enum2int(v_reqPrimitive.discoveryResultType);
-
-        if(discoveryResultTypeValue == 1) {
-          v_uri := v_uri & "&drt=1";  
-        } else if(discoveryResultTypeValue == 2) {
-          v_uri := v_uri & "&drt=2";  
-        }	
-      }
-
-      if(ispresent(v_reqPrimitive.filterCriteria.labels)) {
-
-        var charstring v_char_streamTest := ttcn2string(v_reqPrimitive.filterCriteria.labels);
-        var charstring extracted_string := "";
-        extracted_string := f_extract_from_string(v_char_streamTest);
-
-        v_uri := v_uri & "&lbl=" & extracted_string;	 
-      }
-
-      if(ispresent(v_reqPrimitive.filterCriteria.expireBefore)) {
-        var charstring expireBeforeValue := unichar2char(v_reqPrimitive.filterCriteria.expireBefore);
-        v_uri := v_uri & "&exb=" & expireBeforeValue;  	
-      }
-
-      if(ispresent(v_reqPrimitive.filterCriteria.expireAfter)) {
-        var charstring expireAfterValue := unichar2char(v_reqPrimitive.filterCriteria.expireAfter);
-        v_uri := v_uri & "&exa=" & expireAfterValue;  
-      }
-    }
-
-    if(COAP_BINDING == v_protocol_type or HTTP_BINDING == v_protocol_type ) {	
-      var CoAP_Message v_CoapMsgToSend;
-      var CoAP_ReqResp v_CoapMsg;
-
-      var integer v_contentFormat := 0;
-
-      if(XML_SERIAL ==  v_serial_type){
-        v_contentFormat := APPLICATION_XML_COAP;                  		  
-      }else if(JSON_SERIAL ==  v_serial_type){
-        v_contentFormat := APPLICATION_JSON_COAP;
-      }                
-
-      if(COAP_BINDING == v_protocol_type){
-
-        //get hierarchical structured uri elements
-        csList := f_split_uri(v_uri, "/");				
-
-        if( 1 == v_operation) { //CREATE
-
-          //original payload with long name representation
-          v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
-
-          //serialized payload with short name representation
-          if(v_payload != ""){		
-            if(ispresent(p_msgout.forcedFields)) {						  
-              v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-            } else {
-              var AttributeAux_list v_nullFields := {};
-              v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-            }			  					  
-          }	
-
-          //Get CoapPReqResp Message
-          v_CoapMsg := valueof(t_COAP_POST_request(v_contentFormat, v_ty, v_from, v_reqID, v_payload)); 
-
-          //Update CoapReqResP Message Options - Uri-Path
-          for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
-            if(csList[i] != ""){ 
-              v_CoapMsg.options[i+6]:= { uri_path := csList[i] };
-              log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+6]);
-              v_len := i;
+	if(ispresent(p_msgout.primitive)){ 	  
+  		if(ischosen(p_msgout.primitive.requestPrimitive)){
+    		v_reqPrimitive := p_msgout.primitive.requestPrimitive; 
+    
+    		// test encvalue(primitiveContent) to be removed  
+    		if(ispresent(v_reqPrimitive.primitiveContent)) {
+    
+        		// @TaeHyun Kim, thyun.kim@synctechno.com
+        		// forcedFields 
+        		if(ispresent(p_msgout.forcedFields)){
+                	v_reqPrimitive.primitiveContent := f_applyForcedAttribute(v_reqPrimitive.primitiveContent, p_msgout.forcedFields);        
+                	log(__SCOPE__&"-Input Forced Fields: ", p_msgout.forcedFields); 
+        		}		        		    
+    		}
+    
+        	// Operation attribute (CRUD)
+        	if(ispresent(v_reqPrimitive.operation)) {
+          		v_operation	:= enum2int(v_reqPrimitive.operation);                      
+        	}
+    
+            // From attribute
+            if(ispresent(v_reqPrimitive.from_)) {
+    			v_from := oct2char(unichar2oct(v_reqPrimitive.from_));       
+        
+    			if(v_from == "UnknowOriginator") {
+    				v_from := "C" & v_from;  
+    			}	                    
+    		}
+    
+            // Parse requestPrimitive to_ attribute and generate protocol target URL
+            // If you need more detail information please reter to the TS-0001 Funtional Architecture
+    		if(ispresent(v_reqPrimitive.to_)) {
+    			v_to := oct2char(unichar2oct(v_reqPrimitive.to_)); 
+    			v_uri := v_to;  
+    	
+    			var PrimitiveScope primitiveScopeForAllGeneral;
+    
+    			var charstring primitiveScopeCheck := f_adressingFormatChecker(v_uri);
+    					
+    			if(primitiveScopeCheck == "SPRELATIVE"){ // SP-Relative
+    		    	v_uri := "/~" & v_to;	
+    		  		log(__SCOPE__&"-f_adressingFormatter(Sp-relative):", v_uri);
+    			} else if (primitiveScopeCheck == "CSERELATIVE"){ // CSE-Relative
+    				v_uri := "/" & v_to;
+    		  		log(__SCOPE__&"-f_adressingFormatter(CSE-relative):", v_uri);	  		  
+    			} else if (primitiveScopeCheck == "ABSOLUTE"){ // Absolute
+    		 		v_uri := f_adressingFormatter(v_to, "/", "/_");
+    		  		 		
+    		 		var AddressingMethod p_addressingMethod := PX_ADDRESSING_METHOD;
+    		  		 		
+    		 		if (ischosen(v_reqPrimitive.primitiveContent.aE) and p_addressingMethod == e_nonHierarchical){
+    		 			 v_uri := v_uri & "/" & PX_CSE_RESOURCE_ID;	 
+    		 		}
+    		  		  		
+    		  		log(__SCOPE__&"-f_adressingFormatter(Absolute-relative):", v_uri); 
+    			}	         		
             }
-          }
-
-          //Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
-          if(ispresent(v_reqPrimitive.resultContent)){
-            v_CoapMsg.options[v_len+7]:= { uri_query := "rcn=" & int2str(v_resultContent) };
-          }														  	  
-        } else if( 2 == v_operation or 3 == v_operation or 4 == v_operation) {
-
-          //Get CoapPReqResp Message
-          if( 2 == v_operation){ //RETRIEVE
-            v_CoapMsg := valueof(t_COAP_GET_request(v_contentFormat, v_from, v_reqID));
-          } else if( 3 == v_operation) { //UPDATE
-            //original payload with long name representation
-            v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
-
-            //serialized payload with short name representation
-            if(v_payload != ""){
-              if(ispresent(p_msgout.forcedFields)) {						  
-                v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-              } else {
-                var AttributeAux_list v_nullFields := {};
-                v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-              }								  
-            }							       					
-            v_CoapMsg := valueof(t_COAP_PUT_request(v_contentFormat, v_from, v_reqID, v_payload));
-          }else if( 4 == v_operation){ //DELETE
-            v_CoapMsg := valueof(t_COAP_DELETE_request(v_contentFormat, v_from, v_reqID));
-          }
-
-          //Update CoapReqResP Message Options - Uri-Path
-          for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
-            if(csList[i] != ""){
-              v_CoapMsg.options[i + 5]:= { uri_path := csList[i] };
-              log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+5]);	  	
-              v_len := i;
+    
+            // Resource type attribute
+            if(ispresent(v_reqPrimitive.resourceType)){
+    			v_ty := enum2int(v_reqPrimitive.resourceType);                         
             }
-          }
+        
+            // RequestIdentifier attribute
+            if(ispresent(v_reqPrimitive.requestIdentifier)){
+    			v_reqID	:= oct2char(unichar2oct(v_reqPrimitive.requestIdentifier));                         
+            }
+        
+            // ResultContent attribute
+            if(ispresent(v_reqPrimitive.resultContent)){
+    			v_resultContent	:= enum2int(v_reqPrimitive.resultContent); 
+        
+    			if(HTTP_BINDING == v_protocol_type){
+    				v_uri := v_uri & "?rcn=" & int2str(v_resultContent);                  		  
+    			}          		                        
+    		}
+    
+            // Check the fiterCriteria options
+            if(ispresent(v_reqPrimitive.filterCriteria)) {
+        
+    			// filterUsage value can be 1 or 2  
+    			if(ispresent(v_reqPrimitive.filterCriteria.filterUsage) and (2 == v_operation)) {
+                	var integer filterUsageValue := enum2int(v_reqPrimitive.filterCriteria.filterUsage);
+        
+                	if(filterUsageValue == 1) {
+                  		v_uri := v_uri & "?fu=1";  
+                	} else if(filterUsageValue == 2) {
+                  		v_uri := v_uri & "?fu=2";  
+                	}
+              	}
+        
+    			if(ispresent(v_reqPrimitive.discoveryResultType)) {
+                	var integer discoveryResultTypeValue := enum2int(v_reqPrimitive.discoveryResultType);
+        
+                	if(discoveryResultTypeValue == 1) {
+                  		v_uri := v_uri & "&drt=1";  
+                	} else if(discoveryResultTypeValue == 2) {
+                  		v_uri := v_uri & "&drt=2";  
+              		}	
+    			}
+        
+    			if(ispresent(v_reqPrimitive.filterCriteria.labels)) {
+        
+                	var charstring v_char_streamTest := ttcn2string(v_reqPrimitive.filterCriteria.labels);
+                	var charstring extracted_string := "";
+                	extracted_string := f_extract_from_string(v_char_streamTest);
+        
+    				v_uri := v_uri & "&lbl=" & extracted_string;	 
+    			}
+        
+    			if(ispresent(v_reqPrimitive.filterCriteria.expireBefore)) {
+                	var charstring expireBeforeValue := unichar2char(v_reqPrimitive.filterCriteria.expireBefore);
+                	v_uri := v_uri & "&exb=" & expireBeforeValue;  	
+    			}
+        
+    			if(ispresent(v_reqPrimitive.filterCriteria.expireAfter)) {
+                	var charstring expireAfterValue := unichar2char(v_reqPrimitive.filterCriteria.expireAfter);
+                	v_uri := v_uri & "&exa=" & expireAfterValue;  
+    			}
+    		}
+    
+    		if(COAP_BINDING == v_protocol_type or HTTP_BINDING == v_protocol_type) {	
+          		var CoAP_Message v_CoapMsgToSend;
+          		var CoAP_ReqResp v_CoapMsg;
+    
+          		var integer v_contentFormat := 0;
+    
+          		if(XML_SERIAL ==  v_serial_type) {
+            		v_contentFormat := APPLICATION_XML_COAP;                  		  
+          		}else if(JSON_SERIAL ==  v_serial_type) {
+            		v_contentFormat := APPLICATION_JSON_COAP;
+          		}                
+          		
+    			// Start oneM2M CoAP protocl binding flow
+    			if(COAP_BINDING == v_protocol_type){
+    
+        			//get hierarchical structured uri elements
+                	csList := f_split_uri(v_uri, "/");				
+        
+                	if(1 == v_operation) { //CREATE
+        
+                  		//original payload with long name representation
+                  		v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+        
+                  		//serialized payload with short name representation
+                  		if(v_payload != ""){		
+                    		if(ispresent(p_msgout.forcedFields)) {						  
+                      			v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                    	}	else {
+                      			var AttributeAux_list v_nullFields := {};
+                      			v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+        					}			  					  
+        				}	
+        
+            			//Get CoapPReqResp Message
+            			v_CoapMsg := valueof(t_COAP_POST_request(v_contentFormat, v_ty, v_from, v_reqID, v_payload)); 
+            
+            			//Update CoapReqResP Message Options - Uri-Path
+            			for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
+                        	if(csList[i] != "") { 
+                        		v_CoapMsg.options[i + 6]:= { uri_path := csList[i] };
+                          		log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i + 6]);
+                          		v_len := i;
+            				}
+            			}
+        
+            			//Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
+            			if(ispresent(v_reqPrimitive.resultContent)) {
+                        	v_CoapMsg.options[v_len + 7]:= { uri_query := "rcn=" & int2str(v_resultContent) };
+            			}														  	  
+        			} else if(2 == v_operation or 3 == v_operation or 4 == v_operation) {
+        
+                 		// Get CoapPReqResp Message
+                  		if( 2 == v_operation){ // RETRIEVE
+                  			v_CoapMsg := valueof(t_COAP_GET_request(v_contentFormat, v_from, v_reqID));
+                  		} else if (3 == v_operation) { // UPDATE
+        					//original payload with long name representation
+                          	v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+        
+                            // Serialized payload with short name representation
+                            if(v_payload != ""){
+                            	if(ispresent(p_msgout.forcedFields)) {						  
+                                	v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                            	} else {
+                                	var AttributeAux_list v_nullFields := {};
+                                	v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+                              	}								  
+                            }							       					
+                    		v_CoapMsg := valueof(t_COAP_PUT_request(v_contentFormat, v_from, v_reqID, v_payload));
+                  		} else if(4 == v_operation){ //DELETE
+                  			v_CoapMsg := valueof(t_COAP_DELETE_request(v_contentFormat, v_from, v_reqID));
+                  		}
+        
+        				//Update CoapReqResP Message Options - Uri-Path
+                  		for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
+                    		if(csList[i] != ""){
+                      			v_CoapMsg.options[i + 5]:= { uri_path := csList[i] };
+                      			log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+5]);	  	
+                      			v_len := i;
+                    		}
+                  		}
+        
+                  		//Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
+                  		if(ispresent(v_reqPrimitive.resultContent)){        
+                    		v_CoapMsg.options[v_len + 6]:= { uri_query := "rcn=" & int2str(v_resultContent) };        
+                  		}					  
+                	} else {
+                  		log(__SCOPE__ &"Not supported operation type!", v_operation);
+                	}
+        
+                	//generate CoAP Message
+                	v_CoapMsgToSend := {
+                  		msg := v_CoapMsg
+                	}
+                    
+                    log(__SCOPE__&"-v_CoapMsgToSend-CoAP Message: ", v_CoapMsgToSend); 
+            
+                    //encoding CoAP message
+                    var integer int_debug := f_CoAP_enc(v_CoapMsgToSend, v_encoded_msg); 
+                    log(__SCOPE__ &"-f_CoAP_enc: encoded CoAP message:\n", v_encoded_msg);
+    
+    			} else if(HTTP_BINDING == v_protocol_type) {
+                    var HTTPRequest v_httpReqMsg;
+                    var HTTPMessage v_httpMsgToSend;
+                    var charstring v_accept; 
+    
+                    //assemble accept with serialization type
+                    v_accept := ACCEPT_BASE & v_serial_type;
+    
+    				if( 1 == v_operation ){ //CREATE 
+    
+              			v_contentType := CONTENT_TYPE_BASE & v_serial_type & ";ty=" & int2str(v_ty);
+    
+                        //original payload with long name representation
+                        v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type); log(__SCOPE__&"-v_payload: ", v_payload);
+    
+                        //serialized payload with short name representation
+                        if(v_payload != ""){		
+    						if(ispresent(p_msgout.forcedFields)) {						  
+                            	v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                          	} else {
+                                var AttributeAux_list v_nullFields := {};
+                                v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+    						}	 					  
+                        } else {
+                          log(__SCOPE__ &"-[WARNING]f_encode_requestPrimitive: payload is NULL\n"); 
+                        }
+    					v_httpReqMsg := valueof(t_HTTP_POST_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload)); 
+    				} else if ( 2 == v_operation ){ //RETRIEVE
+    					v_httpReqMsg := valueof(t_HTTP_GET_request(connectId_init, v_uri, v_accept, v_from, v_reqID));
+            		} else if ( 3 == v_operation ){ //UPDATE		     	
+    
+        				v_contentType := CONTENT_TYPE_BASE & v_serial_type;
+        
+                        //original payload with long name representation
+                        v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+    
+                        //serialized payload with short name representation
+                        if(v_payload != "") {
+                            if(ispresent(p_msgout.forcedFields)) {						  
+                              	v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                            } else {
+                              	var AttributeAux_list v_nullFields := {};
+                              	v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+                            }	 
+                        }
+              			v_httpReqMsg := valueof(t_HTTP_PUT_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload));
+            		} else if( 4 == v_operation){ //DELETE
+    					v_httpReqMsg := valueof(t_HTTP_DELETE_request(connectId_init, v_uri, v_accept, v_from, v_reqID)); 	
+            		} else {
+    					log(__SCOPE__ &"-Not supported operation type!", v_operation);
+            		}
+    
+                    //generate HTTP Message
+                    v_httpMsgToSend := {
+                      request:= v_httpReqMsg                             	  
+                    }
+                    log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
+    
+            		v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
+            		log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
+          		}            
+        	} else {
+    			log(__SCOPE__ &"-[warning]NOT SUPPORTED Serialization or Protocol binding TYPE !! ");   		  	  
+        	}
+    
+            // Handling the connectionID                
+            p_asp_Send.connId := connectId_init;
 
-          //Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
-          if(ispresent(v_reqPrimitive.resultContent)){        
-            v_CoapMsg.options[v_len + 6]:= { uri_query := "rcn=" & int2str(v_resultContent) };        
-          }					  
-        } else {
-          log(__SCOPE__ &"Not supported operation type!", v_operation);
-        }
+		} else if (ischosen(p_msgout.primitive.responsePrimitive)) {
+			var ResponsePrimitive v_rspPrimitive := p_msgout.primitive.responsePrimitive;
+            var charstring v_rspRequestID_		 := "";
+            var integer v_response_status;
+            var integer v_onem2m_response_status;
+            var HTTPResponse v_httpRespMsg;
+            var HTTPMessage v_httpMsgToSend;
 
-        //generate CoAP Message
-        v_CoapMsgToSend := {
-          msg := v_CoapMsg
-        }
-        log(__SCOPE__&"-v_CoapMsgToSend-CoAP Message: ", v_CoapMsgToSend); 
+            // Handling the connectionID    
+            p_asp_Send.connId := f_getConId_mcaPortIn();
 
-        //encoding CoAP message
-        var integer int_debug := f_CoAP_enc(v_CoapMsgToSend, v_encoded_msg); 
-        log(__SCOPE__ &"-f_CoAP_enc: encoded CoAP message:\n", v_encoded_msg);
-
-      } else if(HTTP_BINDING == v_protocol_type) {
-        var HTTPRequest v_httpReqMsg;
-        var HTTPMessage v_httpMsgToSend;
-        var charstring v_accept; 
-
-        //assemble accept with serialization type
-        v_accept := ACCEPT_BASE & v_serial_type;
-
-        if( 1 == v_operation ){ //CREATE 
-
-          v_contentType := CONTENT_TYPE_BASE & v_serial_type & ";ty=" & int2str(v_ty);
-
-          //original payload with long name representation
-          v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type); log(__SCOPE__&"-v_payload: ", v_payload);
-
-          //serialized payload with short name representation
-          if(v_payload != ""){		
-            if(ispresent(p_msgout.forcedFields)) {						  
-              v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-            } else {
-              var AttributeAux_list v_nullFields := {};
-              v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-            }	 					  
-          } else {
-            log(__SCOPE__ &"-[WARNING]f_encode_requestPrimitive: payload is NULL\n"); 
-          }
-
-          v_httpReqMsg := valueof(t_HTTP_POST_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload)); 
-
-        } else if ( 2 == v_operation ){ //RETRIEVE
-          v_httpReqMsg := valueof(t_HTTP_GET_request(connectId_init, v_uri, v_accept, v_from, v_reqID));
-        } else if ( 3 == v_operation ){ //UPDATE		     	
-
-          v_contentType := CONTENT_TYPE_BASE & v_serial_type;
-
-          //original payload with long name representation
-          v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
-
-          //serialized payload with short name representation
-          if(v_payload != "") {
-            if(ispresent(p_msgout.forcedFields)) {						  
-              v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-            } else {
-              var AttributeAux_list v_nullFields := {};
-              v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-            }	 
-          }
-
-          v_httpReqMsg := valueof(t_HTTP_PUT_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload));
-
-        }else if( 4 == v_operation){ //DELETE
-          v_httpReqMsg := valueof(t_HTTP_DELETE_request(connectId_init, v_uri, v_accept, v_from, v_reqID)); 	
-        } else {
-          log(__SCOPE__ &"-Not supported operation type!", v_operation);
-        }
-
-        //generate HTTP Message
-        v_httpMsgToSend := {
-          request:= v_httpReqMsg                             	  
+            // ResponseStatus
+            if(ispresent(v_rspPrimitive.responseStatusCode)) {
+                v_onem2m_response_status := enum2int(v_rspPrimitive.responseStatusCode);
+                v_response_status := enum2int(v_rspPrimitive.responseStatusCode);         
+          
+                // change onem2m response stauts code to http response status code
+                if(v_response_status == 2000) {
+                  	v_response_status := 200;
+                } else if (v_response_status == 2001) {
+                  	v_response_status := 201;
+                } else if (v_response_status == 2004) {
+                  	v_response_status := 204;       
+                } else if (v_response_status == 4000) {
+                  	v_response_status := 400;
+                }
+			}
+        
+			// RequestIdentifier
+			if(ispresent(v_rspPrimitive.requestIdentifier)) {
+				v_rspRequestID_	:= oct2char(unichar2oct(v_rspPrimitive.requestIdentifier));                  
+			}
+    
+        	v_httpRespMsg := valueof(http_response_for_mcaPortIn(f_getConId_mcaPortIn(), v_response_status, v_onem2m_response_status, v_rspRequestID_, ""));
+    
+        	//generate HTTP Message
+        	v_httpMsgToSend := {
+          	response:= v_httpRespMsg                             	  
         }
         log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
-
+    
         v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
-        log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
-      }            
-    }else{
-      log(__SCOPE__ &"-[warning]NOT SUPPORTED Serialization or Protocol binding TYPE !! ");   		  	  
+  		log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);				
     }
-
-    // Handling the connectionID                
-    p_asp_Send.connId := connectId_init;
-
-  } else if (ischosen(p_msgout.primitive.responsePrimitive)) {
-    var ResponsePrimitive v_rspPrimitive := p_msgout.primitive.responsePrimitive;
-    var charstring v_rspRequestID_		 := "";
-    var integer v_response_status;
-    var integer v_onem2m_response_status;
-    var HTTPResponse v_httpRespMsg;
-    var HTTPMessage v_httpMsgToSend;
-
-    // Handling the connectionID    
-    p_asp_Send.connId := f_getConId_mcaPortIn();
-
-    // ResponseStatus
-    if(ispresent(v_rspPrimitive.responseStatusCode)) {
-      v_onem2m_response_status := enum2int(v_rspPrimitive.responseStatusCode);
-      v_response_status := enum2int(v_rspPrimitive.responseStatusCode);         
-
-      // change onem2m response stauts code to http response status code
-      if(v_response_status == 2000) {
-        v_response_status := 200;
-      } else if (v_response_status == 2001) {
-        v_response_status := 201;
-      } else if (v_response_status == 2004) {
-        v_response_status := 204;       
-      } else if (v_response_status == 4000) {
-        v_response_status := 400;
-      }
+  
+    //Generate IPL4ASP message 				
+    if(HTTP_BINDING == v_protocol_type) {
+    	p_asp_Send.proto 	:= {tcp := {}};
+    } else if(COAP_BINDING == v_protocol_type) {
+    	p_asp_Send.proto 	:= {udp := {}};
     }
-
-    // RequestIdentifier
-    if(ispresent(v_rspPrimitive.requestIdentifier)) {
-      v_rspRequestID_	:= oct2char(unichar2oct(v_rspPrimitive.requestIdentifier));                  
-    }
-
-    v_httpRespMsg := valueof(http_response_for_mcaPortIn(f_getConId_mcaPortIn(), v_response_status, v_onem2m_response_status, v_rspRequestID_, ""));
-
-    //generate HTTP Message
-    v_httpMsgToSend := {
-      response:= v_httpRespMsg                             	  
-    }
-    log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
-
-    v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
-    log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);				
-  }
-
-  //Generate IPL4ASP message 				
-  if(HTTP_BINDING == v_protocol_type){
-    p_asp_Send.proto 	:= {tcp := {}};
-  } else if(COAP_BINDING == v_protocol_type){
-    p_asp_Send.proto 	:= {udp := {}};
-  }
-  p_asp_Send.msg 	:= v_encoded_msg; 
-}//if_msg_primitive
-
-//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
-
+	p_asp_Send.msg 	:= v_encoded_msg; 
+} // if_msg_primitive
 
 //register message length functions		
 if(PX_PROTOCOL_BINDING=="HTTP")
