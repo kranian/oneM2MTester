@@ -184,7 +184,7 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
     					
     			if(primitiveScopeCheck == "SPRELATIVE"){ // SP-Relative
     		    	v_uri := "/~" & v_to;	
-    		  		log(__SCOPE__&"-f_adressingFormatter(Sp-relative):", v_uri);
+    		  		log(__SCOPE__&"-f_adressingFormatter(SP-relative):", v_uri);
     			} else if (primitiveScopeCheck == "CSERELATIVE"){ // CSE-Relative
     				v_uri := "/" & v_to;
     		  		log(__SCOPE__&"-f_adressingFormatter(CSE-relative):", v_uri);	  		  
@@ -197,7 +197,7 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
     		 			 v_uri := v_uri & "/" & PX_CSE_RESOURCE_ID;	 
     		 		}
     		  		  		
-    		  		log(__SCOPE__&"-f_adressingFormatter(Absolute-relative):", v_uri); 
+    		  		log(__SCOPE__&"-f_adressingFormatter(Absolute):", v_uri); 
     			}	         		
             }
     
@@ -469,241 +469,155 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
     
         	//generate HTTP Message
         	v_httpMsgToSend := {
-          	response:= v_httpRespMsg                             	  
-        }
-        log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
+          		response:= v_httpRespMsg                             	  
+        	}
+        	
+        	log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
     
-        v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
-  		log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);				
-    }
+            v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
+      		log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);				
+        }
   
-    //Generate IPL4ASP message 				
-    if(HTTP_BINDING == v_protocol_type) {
-    	p_asp_Send.proto 	:= {tcp := {}};
-    } else if(COAP_BINDING == v_protocol_type) {
-    	p_asp_Send.proto 	:= {udp := {}};
-    }
-	p_asp_Send.msg 	:= v_encoded_msg; 
-} // if_msg_primitive
-
-//register message length functions		
-if(PX_PROTOCOL_BINDING=="HTTP")
-{
-
-  //--------------------------------------------------------------------------
-  var f_IPL4_getMsgLen getMsg_Func := refers(f_HTTP_Message_len);
-  IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),-1, getMsg_Func, {});
-  //--------------------------------------------------------------------------		
-}
-else  if(PX_PROTOCOL_BINDING=="MQTT") {
-  //--------------------------------------------------------------------------
-  var f_IPL4_getMsgLen getMsg_Func := refers(f_GetMsgLengthMQTT);
-  IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),-1, getMsg_Func, {});
-  //--------------------------------------------------------------------------	
-}
-
-else {}		//not needed for CoAP
-
-
-if (connection_close)
-{
-//register every MsgOut, so we can verify later that they have been answered  
-
-  //initialize
-
-  if (not(isbound(v_portMap.init))) {v_portMap.init:=false}
-
-
-  if (not(v_portMap.init))
-  {
-
-    v_portMap.portStates[0].portRef:="port xxx";
-    v_portMap.portStates[0].connId:=-1;
-    v_portMap.portStates[0].state:=idle;
-    v_portMap.portStates[0].connState:=connected;
-    v_portMap.portStates[0].requestID:="";
-
-
-    v_portMap.firstFree:=-1;
-    v_portMap.init:=true;
-  }
-
-
-  //increment firstfree
-  v_portMap.firstFree:=v_portMap.firstFree+1;	
-
-
-
-  if   (  (v_portMap.firstFree == 0)
-    and 
-    (v_portMap.portStates[v_portMap.firstFree].state==idle)) //first msgOut  
-  {	
-    //record MsgOut parameters, set  state to sent		
-    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
-    v_portMap.portStates[v_portMap.firstFree].connId:=-1;
-    v_portMap.portStates[v_portMap.firstFree].state:=sent;
-    v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
-    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
-
-
-    if(ispresent(p_msgout.primitive)){ 	
-      if(ischosen(p_msgout.primitive.requestPrimitive))
-      {
-        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
-      }//ischosen request
-      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
-
-    }//ispresent primitive	
-
-    p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;
-    port.setstate(0);  
-
-
-  }
-
-
-
-  if ( (v_portMap.firstFree-1 >= 0)
-
-    and  (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout) //msgOut already recorded
-
-    and   ( v_portMap.portStates[v_portMap.firstFree-1].state==postponed) 
-
-  )
-  {
-    //step back
-    v_portMap.firstFree:=v_portMap.firstFree-1;
-
-
-    log("msgOut already recorded  , now it has to be sent")	
-
-    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
-    // v_portMap.portStates[v_portMap.firstFree].connId:=-1;
-    v_portMap.portStates[v_portMap.firstFree].state:=sent;
-    v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
-    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
-
-
-    if(ispresent(p_msgout.primitive)){ 	
-      if(ischosen(p_msgout.primitive.requestPrimitive))
-      {
-        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
-      }//ischosen request
-      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
-
-    }//ispresent primitive	
-
-
-    p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;
-    port.setstate(0);  	
-  }
-
-  else if (
-
-    (v_portMap.firstFree-1 >= 0)
-
-    and (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) //new msgOut , but reconnection was done
-
-    and  (isbound(v_portMap.portStates[v_portMap.firstFree].connState))
-    and (v_portMap.portStates[v_portMap.firstFree].connState==connected ) 
-
-  )
-
-  {    
-
-    log("new msgOut , but reconnection was done, so send it")
-
-    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
-    //   v_portMap.portStates[v_portMap.firstFree].connId:=v_portMap.portStates[v_portMap.firstFree-1].connId;
-    v_portMap.portStates[v_portMap.firstFree].state:=sent;
-    v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
-    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
-
-
-    if(ispresent(p_msgout.primitive)){ 	
-      if(ischosen(p_msgout.primitive.requestPrimitive))
-      {
-        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
-      }//ischosen request
-      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
-
-    }//ispresent primitive	
-
-
-    p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;		     
-
-    port.setstate(0);  
-
-  }
-
-
-
-  else if (
-
-    (v_portMap.firstFree-1 >= 0)
-
-    and (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) //new msgOut , has to be put on hold
-
-    and  (isbound(v_portMap.portStates[v_portMap.firstFree].connState))
-    and (not(v_portMap.portStates[v_portMap.firstFree].connState==connected ) )
-
-  )
-
-  {    
-
-    log("new msgOut , has to be put on hold")
-
-    if  (not(isbound(v_portMap.portStates[v_portMap.firstFree].state)))
-    {	
-      //if firstfree does not exist, initialize	
-      v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
-      v_portMap.portStates[v_portMap.firstFree].connId:=-1;
-      v_portMap.portStates[v_portMap.firstFree].state:=idle;
-      //   v_portMap.portStates[v_portMap.firstFree].connState:=connected;
-      v_portMap.portStates[v_portMap.firstFree].requestID:="";	  		
-
-    }
-
-    //record new msgOut
-
-    v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
-    v_portMap.portStates[v_portMap.firstFree].connId:=-1;
-    v_portMap.portStates[v_portMap.firstFree].state:=postponed;
-    v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
-
-
-    if(ispresent(p_msgout.primitive)){ 	
-      if(ischosen(p_msgout.primitive.requestPrimitive))
-      {
-        v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
-      }//ischosen request
-      // else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
-
-    }//ispresent primitive	
-
-    port.setstate(4);  
-
-
-  }
-
-
-  else {
-
-    log("?????????????????")
-
-    log("v_portMap   ", v_portMap)
-
-  }	
-
-
-
-
-  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++      	
-} //endif connection_close   	 
-else  {     	
-  port.setstate(0);  
-
-}  	    
+        //Generate IPL4ASP message 				
+        if(HTTP_BINDING == v_protocol_type) {
+        	p_asp_Send.proto 	:= {tcp := {}};
+        } else if(COAP_BINDING == v_protocol_type) {
+        	p_asp_Send.proto 	:= {udp := {}};
+        }
+    	p_asp_Send.msg 	:= v_encoded_msg; 
+	} // if_msg_primitive
+
+	//register message length functions		
+	if(PX_PROTOCOL_BINDING == "HTTP") {
+		var f_IPL4_getMsgLen getMsg_Func := refers(f_HTTP_Message_len);
+		IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),-1, getMsg_Func, {});
+	} else if(PX_PROTOCOL_BINDING=="MQTT") {
+  		var f_IPL4_getMsgLen getMsg_Func := refers(f_GetMsgLengthMQTT);
+  		IPL4asp_User_CtrlFunct.f_IPL4_setGetMsgLen(port.getref(),-1, getMsg_Func, {});
+	} else {}		// not needed for CoAP
+
+	if (connection_close) {
+		//register every MsgOut, so we can verify later that they have been answered  
+
+  		//initialize
+		if (not(isbound(v_portMap.init))) {
+			v_portMap.init := false	
+		}
+
+		if (not(v_portMap.init)) {
+            v_portMap.portStates[0].portRef:="port xxx";
+            v_portMap.portStates[0].connId:=-1;
+            v_portMap.portStates[0].state:=idle;
+            v_portMap.portStates[0].connState:=connected;
+            v_portMap.portStates[0].requestID:="";
+            v_portMap.firstFree:=-1;
+            v_portMap.init:=true;
+		}
+
+		//increment first free
+		v_portMap.firstFree:=v_portMap.firstFree+1;	
+    
+    	if ((v_portMap.firstFree == 0) and (v_portMap.portStates[v_portMap.firstFree].state==idle)) { //first msgOut  
+            //record MsgOut parameters, set  state to sent		
+            v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+            v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+            v_portMap.portStates[v_portMap.firstFree].state:=sent;
+            v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
+            v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+    
+			if(ispresent(p_msgout.primitive)) { 	
+				if(ischosen(p_msgout.primitive.requestPrimitive)) {
+					v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+				}//ischosen request
+          		// else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
+    		}//ispresent primitive	
+    
+            p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;
+            port.setstate(0);
+  		}
+
+		if ((v_portMap.firstFree-1 >= 0) and (v_portMap.portStates[v_portMap.firstFree - 1].msgOut == p_msgout) and //msgOut already recorded
+			( v_portMap.portStates[v_portMap.firstFree-1].state==postponed)) {
+    		//step back
+    		v_portMap.firstFree:=v_portMap.firstFree-1;
+
+    		log("msgOut already recorded  , now it has to be sent")	
+
+            v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+            // v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+            v_portMap.portStates[v_portMap.firstFree].state:=sent;
+            v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
+            v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+
+			if(ispresent(p_msgout.primitive)) { 	
+      			if(ischosen(p_msgout.primitive.requestPrimitive)) {
+					v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      			} // ischosen request
+       			// else {} // if ischosen responsePrimitive - responses do not have to be registered, only requests	
+   			}//ispresent primitive	
+
+            p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;
+            port.setstate(0);  	
+		} else if ((v_portMap.firstFree - 1 >= 0) and
+    			   (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) and //new msgOut , but reconnection was done
+				   (isbound(v_portMap.portStates[v_portMap.firstFree].connState)) and
+    			   (v_portMap.portStates[v_portMap.firstFree].connState==connected)) {    
+
+			log("new msgOut , but reconnection was done, so send it")
+
+            v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+            //   v_portMap.portStates[v_portMap.firstFree].connId:=v_portMap.portStates[v_portMap.firstFree-1].connId;
+            v_portMap.portStates[v_portMap.firstFree].state:=sent;
+            v_portMap.portStates[v_portMap.firstFree].connState:=waitForClose;
+            v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+			if(ispresent(p_msgout.primitive)) { 	
+				if(ischosen(p_msgout.primitive.requestPrimitive)) {
+					v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      			} // ischosen request
+      			// else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests
+    		} // ispresent primitive	
+			p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;		     
+			port.setstate(0);  
+		} else if ((v_portMap.firstFree - 1 >= 0) and
+    			   (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) and //new msgOut , has to be put on hold
+				   (isbound(v_portMap.portStates[v_portMap.firstFree].connState)) and
+				   (not(v_portMap.portStates[v_portMap.firstFree].connState==connected))) {    
+
+			log("new msgOut , has to be put on hold")
+
+			if (not(isbound(v_portMap.portStates[v_portMap.firstFree].state))) {	
+                //if firstfree does not exist, initialize	
+                v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+                v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+                v_portMap.portStates[v_portMap.firstFree].state:=idle;
+                //   v_portMap.portStates[v_portMap.firstFree].connState:=connected;
+                v_portMap.portStates[v_portMap.firstFree].requestID:="";	  		    
+            }
+
+            //record new msgOut
+            v_portMap.portStates[v_portMap.firstFree].portRef:=log2str(port.getref());
+            v_portMap.portStates[v_portMap.firstFree].connId:=-1;
+            v_portMap.portStates[v_portMap.firstFree].state:=postponed;
+            v_portMap.portStates[v_portMap.firstFree].msgOut:=p_msgout;
+
+			if(ispresent(p_msgout.primitive)) { 	
+      			if(ischosen(p_msgout.primitive.requestPrimitive)) {
+        			v_portMap.portStates[v_portMap.firstFree].requestID:=p_msgout.primitive.requestPrimitive.requestIdentifier;
+      			} // ischosen request
+      			// else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests	
+
+    		} // ispresent primitive	
+
+    		port.setstate(4);  
+		} else {
+            log("v_portMap   ", v_portMap);    
+        }	    	
+	} // endif connection_close   	 
+    else  {     	
+		port.setstate(0);  
+    }  	    
 } with {extension "prototype(fast)"} // End of Function
 
 /******************************************************
