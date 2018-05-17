@@ -57,7 +57,7 @@ type record PortState {
 	ConnState   connState,
 	MsgOut      msgOut,
 	RequestID   requestID
-	//  MsgGetLenState lenState     
+	// MsgGetLenState lenState     
 } 
 
 type record of PortState PortStates;
@@ -264,8 +264,71 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
     			}
     		}
     
-    		if(COAP_BINDING == v_protocol_type or HTTP_BINDING == v_protocol_type) {	
-          		var CoAP_Message v_CoapMsgToSend;
+    		if(HTTP_BINDING == v_protocol_type) { // HTTP Protocol Binding
+            	var HTTPRequest v_httpReqMsg;
+                var HTTPMessage v_httpMsgToSend;
+                var charstring v_accept; 
+    
+                //assemble accept with serialization type
+                v_accept := ACCEPT_BASE & v_serial_type;
+    
+    			if( 1 == v_operation ){ //CREATE 
+    
+              		v_contentType := CONTENT_TYPE_BASE & v_serial_type & ";ty=" & int2str(v_ty);
+    
+                    //original payload with long name representation
+                    v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type); log(__SCOPE__&"-v_payload: ", v_payload);
+    
+                    //serialized payload with short name representation
+                    if(v_payload != ""){		
+    					if(ispresent(p_msgout.forcedFields)) {						  
+                            v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                    	} else {
+                            var AttributeAux_list v_nullFields := {};
+                            v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+    					}	 					  
+                    } else {
+                    	log(__SCOPE__ &"-[WARNING]f_encode_requestPrimitive: payload is NULL\n"); 
+                    }
+    				v_httpReqMsg := valueof(t_HTTP_POST_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload)); 
+    			} else if ( 2 == v_operation ){ //RETRIEVE
+    					v_httpReqMsg := valueof(t_HTTP_GET_request(connectId_init, v_uri, v_accept, v_from, v_reqID));
+            	} else if ( 3 == v_operation ){ //UPDATE		     	
+    
+        			v_contentType := CONTENT_TYPE_BASE & v_serial_type;
+        
+                    //original payload with long name representation
+                    v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+    
+                    //serialized payload with short name representation
+                    if(v_payload != "") {
+                        if(ispresent(p_msgout.forcedFields)) {						  
+                           v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                        } else {
+                           var AttributeAux_list v_nullFields := {};
+                           v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+                        }	 
+                    }
+              		v_httpReqMsg := valueof(t_HTTP_PUT_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload));
+            	} else if( 4 == v_operation){ //DELETE
+    				v_httpReqMsg := valueof(t_HTTP_DELETE_request(connectId_init, v_uri, v_accept, v_from, v_reqID)); 	
+            	} else {
+    				log(__SCOPE__ &"-Not supported operation type!", v_operation);
+            	}
+    
+            	//generate HTTP Message
+            	v_httpMsgToSend := {
+					request:= v_httpReqMsg                             	  
+            	}
+            
+            	log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
+    
+           		v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
+            	log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
+          	} else if (MQTT_BINDING == v_protocol_type){ // MQTT Protocol Binding
+          	  
+          	} else { // CoAP Protocol Binding
+				var CoAP_Message v_CoapMsgToSend;
           		var CoAP_ReqResp v_CoapMsg;
     
           		var integer v_contentFormat := 0;
@@ -276,162 +339,93 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
             		v_contentFormat := APPLICATION_JSON_COAP;
           		}                
           		
-    			// Start oneM2M CoAP protocl binding flow
-    			if(COAP_BINDING == v_protocol_type){
-    
-        			//get hierarchical structured uri elements
-                	csList := f_split_uri(v_uri, "/");				
+        		//get hierarchical structured uri elements
+                csList := f_split_uri(v_uri, "/");				
         
-                	if(1 == v_operation) { //CREATE
+                if(1 == v_operation) { //CREATE
+                  	//original payload with long name representation
+                  	v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
         
-                  		//original payload with long name representation
-                  		v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+                  	//serialized payload with short name representation
+                  	if(v_payload != ""){		
+                    	if(ispresent(p_msgout.forcedFields)) {						  
+                      		v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                    	} else {
+                      		var AttributeAux_list v_nullFields := {};
+                      		v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+        				}			  					  
+        			}	
         
-                  		//serialized payload with short name representation
-                  		if(v_payload != ""){		
-                    		if(ispresent(p_msgout.forcedFields)) {						  
-                      			v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-                    	}	else {
-                      			var AttributeAux_list v_nullFields := {};
-                      			v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-        					}			  					  
-        				}	
-        
-            			//Get CoapPReqResp Message
-            			v_CoapMsg := valueof(t_COAP_POST_request(v_contentFormat, v_ty, v_from, v_reqID, v_payload)); 
+            		//Get CoapPReqResp Message
+            		v_CoapMsg := valueof(t_COAP_POST_request(v_contentFormat, v_ty, v_from, v_reqID, v_payload)); 
             
-            			//Update CoapReqResP Message Options - Uri-Path
-            			for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
-                        	if(csList[i] != "") { 
-                        		v_CoapMsg.options[i + 6]:= { uri_path := csList[i] };
-                          		log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i + 6]);
-                          		v_len := i;
-            				}
+            		//Update CoapReqResP Message Options - Uri-Path
+            		for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
+                      	if(csList[i] != "") { 
+                      		v_CoapMsg.options[i + 6]:= { uri_path := csList[i] };
+                        	log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i + 6]);
+                    		v_len := i;
             			}
-        
-            			//Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
-            			if(ispresent(v_reqPrimitive.resultContent)) {
-                        	v_CoapMsg.options[v_len + 7]:= { uri_query := "rcn=" & int2str(v_resultContent) };
-            			}														  	  
-        			} else if(2 == v_operation or 3 == v_operation or 4 == v_operation) {
-        
-                 		// Get CoapPReqResp Message
-                  		if( 2 == v_operation){ // RETRIEVE
-                  			v_CoapMsg := valueof(t_COAP_GET_request(v_contentFormat, v_from, v_reqID));
-                  		} else if (3 == v_operation) { // UPDATE
-        					//original payload with long name representation
-                          	v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
-        
-                            // Serialized payload with short name representation
-                            if(v_payload != ""){
-                            	if(ispresent(p_msgout.forcedFields)) {						  
-                                	v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-                            	} else {
-                                	var AttributeAux_list v_nullFields := {};
-                                	v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-                              	}								  
-                            }							       					
-                    		v_CoapMsg := valueof(t_COAP_PUT_request(v_contentFormat, v_from, v_reqID, v_payload));
-                  		} else if(4 == v_operation){ //DELETE
-                  			v_CoapMsg := valueof(t_COAP_DELETE_request(v_contentFormat, v_from, v_reqID));
-                  		}
-        
-        				//Update CoapReqResP Message Options - Uri-Path
-                  		for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
-                    		if(csList[i] != ""){
-                      			v_CoapMsg.options[i + 5]:= { uri_path := csList[i] };
-                      			log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+5]);	  	
-                      			v_len := i;
-                    		}
-                  		}
-        
-                  		//Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
-                  		if(ispresent(v_reqPrimitive.resultContent)){        
-                    		v_CoapMsg.options[v_len + 6]:= { uri_query := "rcn=" & int2str(v_resultContent) };        
-                  		}					  
-                	} else {
-                  		log(__SCOPE__ &"Not supported operation type!", v_operation);
-                	}
-        
-                	//generate CoAP Message
-                	v_CoapMsgToSend := {
-                  		msg := v_CoapMsg
-                	}
-                    
-                    log(__SCOPE__&"-v_CoapMsgToSend-CoAP Message: ", v_CoapMsgToSend); 
-            
-                    //encoding CoAP message
-                    var integer int_debug := f_CoAP_enc(v_CoapMsgToSend, v_encoded_msg); 
-                    log(__SCOPE__ &"-f_CoAP_enc: encoded CoAP message:\n", v_encoded_msg);
-    
-    			} else if(HTTP_BINDING == v_protocol_type) {
-                    var HTTPRequest v_httpReqMsg;
-                    var HTTPMessage v_httpMsgToSend;
-                    var charstring v_accept; 
-    
-                    //assemble accept with serialization type
-                    v_accept := ACCEPT_BASE & v_serial_type;
-    
-    				if( 1 == v_operation ){ //CREATE 
-    
-              			v_contentType := CONTENT_TYPE_BASE & v_serial_type & ";ty=" & int2str(v_ty);
-    
-                        //original payload with long name representation
-                        v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type); log(__SCOPE__&"-v_payload: ", v_payload);
-    
-                        //serialized payload with short name representation
-                        if(v_payload != ""){		
-    						if(ispresent(p_msgout.forcedFields)) {						  
-                            	v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-                          	} else {
-                                var AttributeAux_list v_nullFields := {};
-                                v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-    						}	 					  
-                        } else {
-                          log(__SCOPE__ &"-[WARNING]f_encode_requestPrimitive: payload is NULL\n"); 
-                        }
-    					v_httpReqMsg := valueof(t_HTTP_POST_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload)); 
-    				} else if ( 2 == v_operation ){ //RETRIEVE
-    					v_httpReqMsg := valueof(t_HTTP_GET_request(connectId_init, v_uri, v_accept, v_from, v_reqID));
-            		} else if ( 3 == v_operation ){ //UPDATE		     	
-    
-        				v_contentType := CONTENT_TYPE_BASE & v_serial_type;
-        
-                        //original payload with long name representation
-                        v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
-    
-                        //serialized payload with short name representation
-                        if(v_payload != "") {
-                            if(ispresent(p_msgout.forcedFields)) {						  
-                              	v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
-                            } else {
-                              	var AttributeAux_list v_nullFields := {};
-                              	v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
-                            }	 
-                        }
-              			v_httpReqMsg := valueof(t_HTTP_PUT_request(connectId_init, v_uri, v_accept, v_from, v_reqID, v_contentType, v_payload));
-            		} else if( 4 == v_operation){ //DELETE
-    					v_httpReqMsg := valueof(t_HTTP_DELETE_request(connectId_init, v_uri, v_accept, v_from, v_reqID)); 	
-            		} else {
-    					log(__SCOPE__ &"-Not supported operation type!", v_operation);
             		}
-    
-                    //generate HTTP Message
-                    v_httpMsgToSend := {
-                      request:= v_httpReqMsg                             	  
-                    }
-                    log(__SCOPE__ &"-HTTP Message to send ", v_httpMsgToSend);
-    
-            		v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
-            		log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
-          		}            
-        	} else {
-    			log(__SCOPE__ &"-[warning]NOT SUPPORTED Serialization or Protocol binding TYPE !! ");   		  	  
-        	}
+        
+            		//Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
+            		if(ispresent(v_reqPrimitive.resultContent)) {
+                		v_CoapMsg.options[v_len + 7]:= { uri_query := "rcn=" & int2str(v_resultContent) };
+            		}														  	  
+        		} else if(2 == v_operation or 3 == v_operation or 4 == v_operation) {
+        
+                 	// Get CoapPReqResp Message
+                  	if(2 == v_operation){ // RETRIEVE
+                  		v_CoapMsg := valueof(t_COAP_GET_request(v_contentFormat, v_from, v_reqID));
+                  	} else if (3 == v_operation) { // UPDATE
+        				//original payload with long name representation
+                    	v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type);
+        
+                    	// Serialized payload with short name representation
+						if(v_payload != ""){
+							if(ispresent(p_msgout.forcedFields)) {						  
+                         		v_payload := f_serialization_Enc(v_payload, v_serial_type, p_msgout.forcedFields);
+                         	} else {
+								var AttributeAux_list v_nullFields := {};
+								v_payload := f_serialization_Enc(v_payload, v_serial_type, v_nullFields);
+							}									  
+						}							       					
+                    	v_CoapMsg := valueof(t_COAP_PUT_request(v_contentFormat, v_from, v_reqID, v_payload));
+					} else if(4 == v_operation){ //DELETE
+						v_CoapMsg := valueof(t_COAP_DELETE_request(v_contentFormat, v_from, v_reqID));
+					}
+        
+					//Update CoapReqResP Message Options - Uri-Path
+					for(var integer i := 0; i < lengthof(csList); i := i + 1){                          		  		
+						if(csList[i] != ""){
+							v_CoapMsg.options[i + 5]:= { uri_path := csList[i] };
+							log(__SCOPE__& "-outprint elements of Coap options", v_CoapMsg.options[i+5]);	  	
+							v_len := i;
+     					}
+					}
+        
+					//Update CoapReqResP Message Options - Uri-Query in case resultContent is present 
+					if(ispresent(v_reqPrimitive.resultContent)){        
+						v_CoapMsg.options[v_len + 6]:= { uri_query := "rcn=" & int2str(v_resultContent) };        
+					}					  
+				} else {
+					log(__SCOPE__ &"Not supported operation type!", v_operation);
+				}
+        
+				//generate CoAP Message
+				v_CoapMsgToSend := {
+					msg := v_CoapMsg
+				}
+                    
+				log(__SCOPE__&"-v_CoapMsgToSend-CoAP Message: ", v_CoapMsgToSend); 
+            
+				//encoding CoAP message
+				var integer int_debug := f_CoAP_enc(v_CoapMsgToSend, v_encoded_msg); 
+				log(__SCOPE__ &"-f_CoAP_enc: encoded CoAP message:\n", v_encoded_msg);          	      	  
+          	}
     
             // Handling the connectionID                
             p_asp_Send.connId := connectId_init;
-
 		} else if (ischosen(p_msgout.primitive.responsePrimitive)) {
 			var ResponsePrimitive v_rspPrimitive := p_msgout.primitive.responsePrimitive;
             var charstring v_rspRequestID_		 := "";
