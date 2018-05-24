@@ -326,7 +326,44 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
            		v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
             	log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
           	} else if (MQTT_BINDING == v_protocol_type){ // MQTT Protocol Binding
-          	  
+          		log("v_state:  ",v_state)
+    
+				if (ischosen(pl_in.msg)) { 
+					if (ischosen(pl_in.msg.connect_msg)) { 
+						if(v_state == Idle) {
+							v_state := Wait_connack;	
+						}	
+					} else if (ischosen(pl_in.msg.disconnect_msg)) {
+						if(v_state == Connected) {
+							v_state := Idle;	
+						}	
+					} else if (ischosen(pl_in.msg.subscribe)) {
+						if(v_state == Connected) {
+							v_state:=Wait_suback;	
+						}  	
+					} else if (ischosen(pl_in.msg.publish)) {
+                		if(v_state == Subscribed)  { /*no change*/}
+          				else if(v_state == Wait_suback) { /*no change*/}
+          				else if(v_state == Connected) { 
+                    		f_MQTT_v3_1_1_enc(valueof(t_subscribe), v_ASP_Send.msg);
+                    		v_ASP_Send.connId :=  v_connId;  
+                    		v_ASP_Send.proto := omit;       
+                    		v_state:=Wait_suback;
+        
+                    		port.send(v_ASP_Send) 
+    					} else {}
+        			} else {}  	
+ 						f_MQTT_v3_1_1_enc(pl_in, pl_out.msg);
+				} else {
+        			pl_out.msg := pl_in.raw_message
+				}
+    
+        		pl_out.connId :=  v_connId;  
+        		pl_out.proto := omit; 
+    
+				log("v_connId:  ",v_connId)
+      
+				port.setstate(0);          	  
           	} else { // CoAP Protocol Binding
 				var CoAP_Message v_CoapMsgToSend;
           		var CoAP_ReqResp v_CoapMsg;

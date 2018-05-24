@@ -13,9 +13,9 @@
 //  Rev:                R1A
 //  Prodnr:             CNL 113 831
 
-#include "Mqtt_v3_1_1_Types.hh"
+#include "MQTT_v3_1_1_Types.hh"
 
-namespace Mqtt__v3__1__1__Types {
+namespace MQTT__v3__1__1__Types {
 
 unsigned int encodeFlags(BIT4n bits);
 int encodePacketIdentifier(TTCN_Buffer &buffer, int identifier, long long int &length);
@@ -185,7 +185,7 @@ f__MQTT__v3__1__1__dec(OCTETSTRING const &str, MQTT__v3__1__1__Message &msg)
         }
         msg.msg().publish().topic__name().decode_utf8(tmpLength, &str_ptr[position+2]);
         position += 2+tmpLength;
-        if((msg.msg().publish().header().qos__level() == Mqtt__v3__1__1__Types::QoS::AT__LEAST__ONCE__DELIVERY || msg.msg().publish().header().qos__level() == Mqtt__v3__1__1__Types::QoS::EXACTLY__ONE__DELIVERY) && str.lengthof() >= position+2){
+        if((msg.msg().publish().header().qos__level() == MQTT__v3__1__1__Types::QoS::AT__LEAST__ONCE__DELIVERY || msg.msg().publish().header().qos__level() == MQTT__v3__1__1__Types::QoS::EXACTLY__ONE__DELIVERY) && str.lengthof() >= position+2){
           if(str.lengthof() < position+2){
             msg.raw__message() = str;
             return 1;
@@ -263,7 +263,7 @@ f__MQTT__v3__1__1__dec(OCTETSTRING const &str, MQTT__v3__1__1__Message &msg)
           position += 3+tmpLength;
         }
         if(count == 0){
-          msg.msg().subscribe().payload() = Mqtt__v3__1__1__Types::MQTT__v3__1__1__SubscribePayloadList(NULL_VALUE);
+          msg.msg().subscribe().payload() = MQTT__v3__1__1__Types::MQTT__v3__1__1__SubscribePayloadList(NULL_VALUE);
         }
         break;
       case 9:
@@ -285,7 +285,7 @@ f__MQTT__v3__1__1__dec(OCTETSTRING const &str, MQTT__v3__1__1__Message &msg)
           position++;
         }
         if(count == 0){
-          msg.msg().suback().payload().return__code() = Mqtt__v3__1__1__Types::IntegerList(NULL_VALUE);
+          msg.msg().suback().payload().return__code() = MQTT__v3__1__1__Types::IntegerList(NULL_VALUE);
         }
         break;
       case 10:
@@ -312,7 +312,7 @@ f__MQTT__v3__1__1__dec(OCTETSTRING const &str, MQTT__v3__1__1__Message &msg)
           count++;
         }
         if(count == 0){
-          msg.msg().unsubscribe().payload().topic__filter() = Mqtt__v3__1__1__Types::UCHAR0__65535List(NULL_VALUE);
+          msg.msg().unsubscribe().payload().topic__filter() = MQTT__v3__1__1__Types::UCHAR0__65535List(NULL_VALUE);
         }
         break;
       case 11:

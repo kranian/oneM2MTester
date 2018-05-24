@@ -20,7 +20,7 @@ module OneM2M_Ports {
 	import from IPL4asp_Types all;
 	
 	// Module dependencies
-	import from Mqtt_v3_1_1_Types all;
+	import from MQTT_v3_1_1_Types all;
 	import from CoAP_Types all;
 	import from HTTPmsg_Types all;
 	import from OneM2M_Primitive_EncDec all;
@@ -36,30 +36,31 @@ module OneM2M_Ports {
 	 * @desc e.g. extend OneM2MPort to dual-faced port
 	 */
 	 	
-	 
 	type port OneM2MPort message map to IPL4asp_PT {
 		out 
-			MsgOut 			to	ASP_Send with f_enc_M2MPrimitive_to_ASPSend();
+			MsgOut 	   to	ASP_Send        with f_enc_M2MPrimitive_to_ASPSend();
 		in 
 			MsgIn	   from ASP_RecvFrom	with f_dec_ASPRecvFrom_to_M2MPrimitive(),
-	     	ASP_Event  from ASP_Event       with f_handleASPEvent()	;
-	     
-	   var     PortMap v_portMap
-	
-	      		      	
-	} with {extension "internal"}
+	     	ASP_Event  from ASP_Event       with f_handleASPEvent();
+	   
+		var PortMap v_portMapvar;
+		
+		// Definition for MQTT handling
+		integer v_connId      
+    	var  MQTTClientState v_state := Idle;
+    	var  ASP_Send v_ASP_Send;
+	} with { extension "internal" }
 	
 	/**
 	 * @desc Port to transport control commands to Upper Tester Application
 	 */
 	type port UpperTesterPort message map to IPL4asp_PT {
 		out
-	     	UtTriggerPrimitive 			to 	ASP_Send 	with f_enc_M2MPrimitive_to_ASPSend_for_trigger()
-	     	
-	     in
-	     	UtTriggerAckPrimitive from ASP_RecvFrom 	 with f_dec_ASPRecvFrom_to_M2MPrimitive_for_trigger(),
-	     	ASP_Event             from ASP_Event         with f_handleASPEvent_trigger()
-	} with {extension "internal"}
+			UtTriggerPrimitive 	  to   ASP_Send 	  with f_enc_M2MPrimitive_to_ASPSend_for_trigger()     	
+		in
+	     	UtTriggerAckPrimitive from ASP_RecvFrom   with f_dec_ASPRecvFrom_to_M2MPrimitive_for_trigger(),
+	     	ASP_Event             from ASP_Event      with f_handleASPEvent_trigger();
+	} with { extension "internal" }
 	
 	/**
 	 * @desc Port to transport Adaptor Control primitives
@@ -80,7 +81,4 @@ module OneM2M_Ports {
 		in
 			RequestPrimitive, ResponsePrimitive, PrimitiveContent, MyResource;
 	}
-	
-	
 }//end module
-

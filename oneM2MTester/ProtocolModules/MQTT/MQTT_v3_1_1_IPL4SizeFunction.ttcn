@@ -17,7 +17,7 @@
 // f_IPL4_setGetMsgLen(IPL4_port,connectionId, getMsg_Func, {});      *
 //*********************************************************************
 
-module Mqtt_v3_1_1_IPL4SizeFunction{
+module MQTT_v3_1_1_IPL4SizeFunction{
 
 
 import from Socket_API_Definitions all;
@@ -30,7 +30,7 @@ external function f_calc_MQTT_length(in octetstring data) return integer;
 
 
 //*************************************************************************
-function f_GetMsgLengthMQTT(  in octetstring stream,   inout ro_integer args) return integer
+function f_GetMsgLengthMQTT(  in octetstring stream,   inout ro_integer args ) return integer
 //*************************************************************************
 
 {

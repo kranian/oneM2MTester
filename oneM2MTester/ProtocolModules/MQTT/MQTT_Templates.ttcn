@@ -1,0 +1,163 @@
+module MQTT_IPL4_translation {
+    import from MQTT_v3_1_1_Types all;
+    import from IPL4asp_PortType all;
+    import from IPL4asp_Types all;
+    
+    type enumerated TCPState { Connected, Disconnected  } 
+    
+    type enumerated MQTTClientState { Idle, Wait_connack, Connected, Wait_suback, Wait_unsuback, Subscribed } 
+    
+    type record Composite {
+    	MQTT_v3_1_1_Message  mqttMessage,
+      	integer              connId
+    }
+    
+    template Composite t_connect_0(in integer p_connId) := { 
+    	mqttMessage:= { 
+    		msg := {
+    			connect_msg := { 
+        			header := { flags := '0000'B }, 
+            		name := "MQIsdp", 
+            		protocol_level := 3, 
+            		flags := { user_name_flag := '0'B, password_flag := '0'B, will_retain := '0'B, will_qos := AT_MOST_ONCE_DELIVERY , will_flag := '0'B, clean_session := '1'B }, 
+            		keep_alive := 60, 
+            		payload := { client_identifier := "titan_e60cfd2d21c9df8c", will_topic := omit, will_message := omit, user_name := omit, password := omit } 
+          		} 
+        	}
+      	}, 
+    	connId := p_connId
+    }
+    
+    template MQTT_v3_1_1_Message t_connack := 
+    { msg := { connack := { header := { flags := '0000'B }, session_present_flag := '0'B, connect_return_code := 0 } } }
+    
+    template MQTT_v3_1_1_Message t_subscribe := 
+    { msg := { subscribe := { header := { flags := '0010'B }, packet_identifier := 52934, payload := { { topic_filter := "testtopic/1", requested_qos := EXACTLY_ONE_DELIVERY } } } } }
+    
+    template MQTT_v3_1_1_Message t_suback :=
+    { msg := { suback := { header := { flags := '0000'B }, packet_identifier := ?, payload := { return_code := { ? } } } } }
+    
+    template MQTT_v3_1_1_Message t_publish (in charstring payload) :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := AT_MOST_ONCE_DELIVERY, retain_flag := '0'B }, topic_name := "testtopic/1", packet_identifier := omit, payload := char2oct(payload) } } }
+    
+    template MQTT_v3_1_1_Message t_publish_r0  :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := AT_MOST_ONCE_DELIVERY , retain_flag := '1'B }, topic_name := "testtopic/1", packet_identifier := *, payload := '74657374'O  } } } //"test"
+    
+    template MQTT_v3_1_1_Message t_publish_r1  :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := EXACTLY_ONE_DELIVERY , retain_flag := '1'B }, topic_name := "testtopic/1", packet_identifier := *, payload := '74657374646666'O  } } } //"testdff"
+    
+    template MQTT_v3_1_1_Message t_publish_r :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := AT_MOST_ONCE_DELIVERY, retain_flag := ? }, topic_name := ?, packet_identifier := omit, 
+          payload :='427265617468652C206272656174686520696E2074686520616972'O }}    
+    }
+    
+    template MQTT_v3_1_1_Message t_unsubscribe :=
+    { msg := { unsubscribe := { header := { flags := '0010'B }, packet_identifier := 52936, payload := { topic_filter := { "testtopic/1" } } } } }
+    
+    template MQTT_v3_1_1_Message t_unsuback :=
+    { msg := { unsuback := { header := { flags := '0000'B }, packet_identifier := ? } } }
+    
+    template MQTT_v3_1_1_Message t_disconnect :=
+    { msg := { disconnect_msg := { header := { flags := '0000'B } } } }
+    
+    type port MQTT_IPL4_PT message map to IPL4asp_PT {
+    	out  
+    		Composite              to   ASP_Send   with f_enc_MQTT_Translation_0(),
+    		MQTT_v3_1_1_Message    to   ASP_Send   with f_enc_MQTT_Translation(),
+    		ASP_Send               to   ASP_Send   with f_asp_to_asp_Translation() 
+    	in      
+    		MQTT_v3_1_1_Message    from ASP_RecvFrom with f_dec_MQTT_Translation(),
+    		ASP_Event  
+    	var  integer v_connId      
+        
+    	var  MQTTClientState v_state:=Idle;
+    	var  ASP_Send v_ASP_Send;  
+    
+    } with {extension "internal"}
+    
+    function f_asp_to_asp_Translation( in ASP_Send pl_in,  out ASP_Send pl_out) {
+        pl_out := pl_in;
+        port.setstate(0);
+    } with {extension "prototype(fast)" }
+    
+    function f_enc_MQTT_Translation ( in MQTT_v3_1_1_Message  pl_in, out ASP_Send pl_out) port MQTT_IPL4_PT {
+    
+		log("v_state:  ",v_state)
+    
+		if (ischosen(pl_in.msg)) { 
+    
+			if (ischosen(pl_in.msg.connect_msg)) { 
+				if(v_state == Idle) {
+					v_state := Wait_connack;	
+				}	
+			} else if (ischosen(pl_in.msg.disconnect_msg)) {
+				if(v_state == Connected) {
+					v_state := Idle;	
+				}	
+			} else if (ischosen(pl_in.msg.subscribe)) {
+				if(v_state == Connected) {
+					v_state:=Wait_suback;	
+				}  	
+			} else if (ischosen(pl_in.msg.publish)) {
+                if(v_state == Subscribed)  { /*no change*/}
+          		else if(v_state == Wait_suback) { /*no change*/}
+          		else if(v_state == Connected) { 
+                    f_MQTT_v3_1_1_enc(valueof(t_subscribe), v_ASP_Send.msg);
+                    v_ASP_Send.connId :=  v_connId;  
+                    v_ASP_Send.proto := omit;       
+                    v_state:=Wait_suback;
+        
+                    port.send(v_ASP_Send) 
+    			} else {}
+        	} else {}  	
+ 			f_MQTT_v3_1_1_enc(pl_in, pl_out.msg);
+		} else {
+        	pl_out.msg := pl_in.raw_message
+		}
+    
+        pl_out.connId :=  v_connId;  
+        pl_out.proto := omit; 
+    
+		log("v_connId:  ",v_connId)
+      
+		port.setstate(0);
+	} with { extension "prototype(fast)" }
+     
+	function f_enc_MQTT_Translation_0 ( in  Composite  pl_in, out ASP_Send pl_out) port MQTT_IPL4_PT {
+    
+		v_connId:=pl_in.connId; //save  connId
+    
+		if (ischosen(pl_in.mqttMessage.msg)) { 
+			if (ischosen(pl_in.mqttMessage.msg.connect_msg)) {
+				if(v_state == Idle) {
+					v_state := Wait_connack	
+				} else {/*error*/}
+				
+			} else {}  //Composit eonly contains connect; this shoudl be an error
+    
+        	f_MQTT_v3_1_1_enc(pl_in.mqttMessage, pl_out.msg);
+      	} else {
+        	pl_out.msg:=pl_in.mqttMessage.raw_message
+      	}
+
+        pl_out.connId :=  v_connId;  
+        pl_out.proto := omit; 
+      
+        log("v_connId:  ",v_connId)
+        log("v_state:  ",v_state)
+      
+        port.setstate(0);
+	} with {extension "prototype(fast)" }
+    
+    function f_dec_MQTT_Translation (in  ASP_RecvFrom pl_in,  out MQTT_v3_1_1_Message pl_out) port MQTT_IPL4_PT {
+        log("v_state:  ",v_state)
+      
+        f_MQTT_v3_1_1_dec(pl_in.msg,  pl_out)  
+    
+        if(ischosen(pl_out.msg.connack)) 	   { if(v_state == Wait_connack)  { v_state := Connected}}
+      	else if(ischosen(pl_out.msg.unsuback)) { if(v_state == Wait_unsuback) { v_state := Connected}}
+      	else if(ischosen(pl_out.msg.suback))   { if(v_state == Wait_suback)   { v_state := Subscribed}}
+      	port.setstate(0);
+	} with {extension "prototype(fast)" }
+}//endmodule
+

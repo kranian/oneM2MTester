@@ -9,10 +9,10 @@
 *  Spaseski Naum - initial implementation
 ******************************************************************************/
 
-#include "Mqtt_v3_1_1_IPL4SizeFunction.hh"
+#include "MQTT_v3_1_1_IPL4SizeFunction.hh"
 
 
-namespace Mqtt__v3__1__1__IPL4SizeFunction {
+namespace MQTT__v3__1__1__IPL4SizeFunction {
 
 INTEGER f__calc__MQTT__length(const OCTETSTRING& data){
     

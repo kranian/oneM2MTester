@@ -13,7 +13,7 @@
 //  Rev:                R1A
 //  Prodnr:             CNL 113 831 
 
-module Mqtt_v3_1_1_Types
+module MQTT_v3_1_1_Types
 {
   external function f_MQTT_v3_1_1_enc(in MQTT_v3_1_1_Message msg, out octetstring str) return integer;
   external function f_MQTT_v3_1_1_dec(in octetstring str, out MQTT_v3_1_1_Message msg) return integer;
@@ -165,7 +165,5 @@ module Mqtt_v3_1_1_Types
     MQTT_v3_1_1_ReqResp           msg,
     octetstring                   raw_message
   }
-  
-  
-}
 
+}
