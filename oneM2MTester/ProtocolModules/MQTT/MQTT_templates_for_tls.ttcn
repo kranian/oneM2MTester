@@ -1,0 +1,48 @@
+module MQTT_templates_for_tls {
+
+	import from MQTT_v3_1_1_Types all;
+
+	type enumerated TCPState { Connected, Disconnected } 
+	type enumerated MQTTClientState { Idle, Wait_connack, Connected, Wait_suback, Wait_unsuback, Wait_publish_echo, Subscribed, Disconnected } 
+
+    template MQTT_v3_1_1_Message t_connect :=
+    { msg := { connect_msg := { 
+                header := { flags := '0000'B }, 
+                name := "MQIsdp", 
+                protocol_level := 3, 
+                flags := { user_name_flag := '0'B, password_flag := '0'B, will_retain := '0'B, will_qos := AT_MOST_ONCE_DELIVERY , will_flag := '0'B, clean_session := '1'B }, 
+                keep_alive := 60, 
+                payload := { client_identifier := "titan_e60cfd2d21c9df8c", will_topic := omit, will_message := omit, user_name := omit, password := omit } 
+            } 
+    	}
+    }
+
+	template MQTT_v3_1_1_Message t_connack :=
+	{ msg := { connack := { header := { flags := '0000'B }, session_present_flag := '0'B, connect_return_code := 0 } } }
+
+	template MQTT_v3_1_1_Message t_subscribe :=
+	{ msg := { subscribe := { header := { flags := '0010'B }, packet_identifier := 52934, payload := { { topic_filter := "testtopic/1xgrh", requested_qos := EXACTLY_ONE_DELIVERY } } } } }
+
+    template MQTT_v3_1_1_Message t_suback :=
+    { msg := { suback := { header := { flags := '0000'B }, packet_identifier := ?, payload := { return_code := { ? } } } } }
+    
+    template MQTT_v3_1_1_Message t_publish (in charstring payload) :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := AT_MOST_ONCE_DELIVERY, retain_flag := '0'B }, topic_name := "testtopic/1xgrh", packet_identifier := omit, payload := char2oct(payload) } } }
+    
+    template MQTT_v3_1_1_Message t_publish_r0 :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := AT_MOST_ONCE_DELIVERY, retain_flag := '1'B }, topic_name := "testtopic/1xgrh", packet_identifier := *, payload := '74657374'O  } } } // "test"
+    
+    template MQTT_v3_1_1_Message t_publish_r1 :=
+    { msg := { publish := { header := { dup_flag := '0'B, qos_level := EXACTLY_ONE_DELIVERY, retain_flag := '1'B }, topic_name := "testtopic/1xgrh", packet_identifier := *, payload := '74657374646666'O  } } } // "testdff"
+    
+    template MQTT_v3_1_1_Message t_publish_r := { msg := { publish := { header := { dup_flag := '0'B, qos_level := AT_MOST_ONCE_DELIVERY, retain_flag := ? }, topic_name := ?, packet_identifier := omit, payload :='427265617468652C206272656174686520696E2074686520616972'O} } }
+    
+    template MQTT_v3_1_1_Message t_unsubscribe :=
+    { msg := { unsubscribe := { header := { flags := '0010'B }, packet_identifier := 52936, payload := { topic_filter := { "testtopic/1xgrh" } } } } }
+    
+    template MQTT_v3_1_1_Message t_unsuback :=
+    { msg := { unsuback := { header := { flags := '0000'B }, packet_identifier := ? } } }
+    
+    template MQTT_v3_1_1_Message t_disconnect :=
+    { msg := { disconnect_msg := { header := { flags := '0000'B } } } }
+}

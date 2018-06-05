@@ -1,0 +1,39 @@
+module MQTT_testing_system {
+
+	modulepar {
+        charstring tsp_hostname:="test.mosquitto.org"  
+        charstring tsp_url:="/mqtt" 
+        boolean    tsp_use_ssl:=false 
+        integer    tsp_remPort:=8080 
+        integer    tsp_remPort_s:=8081
+    }
+    
+    import from IPL4asp_Types all;
+    import from IPL4asp_PortType all;
+    import from MQTT_v3_1_1_Types all;
+    import from MQTT_v3_1_1_IPL4SizeFunction all;
+    import from OneM2M_TestSystem all;
+    
+	function f_preamble() runs on AeSimu system CseSystem {
+		vl_result := c_res;
+		// vl_result :=MQTT_User_CtrlFunct.f_IPL4_connect( MQTT_PCO, tsp_hostname, tsp_remPort,"",0, -1, {tcp := {} }, {} ); 
+    
+      	log("connect result", vl_result);
+      	
+		if (not(ispresent(vl_result.connId))) {
+            log("Could not connect TCP/TLS");
+            stop;
+      	} else {  
+      		v_TCPState := Connected
+      	}
+    
+      	v_cid := vl_result.connId; 
+    
+		//register message length function of MQTT with IPL4:
+	    //*************************************************************************
+		var f_IPL4_getMsgLen getMsg_Func := refers(f_GetMsgLengthMQTT);
+        // MQTT_User_CtrlFunct.f_IPL4_setGetMsgLen(MQTT_PCO,v_cid, getMsg_Func, {});
+        //*************************************************************************
+		// MQTT_PCO.send(v_cid);// send connId to the port
+	}
+}

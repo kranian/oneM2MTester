@@ -21,11 +21,12 @@ module OneM2M_TestSystem {
 	//@JaeYoung, These are added for the translation port
 	import from IPL4asp_PortType all;
 	import from IPL4asp_Types all;
+	import from MQTT_templates_for_tls all;
 
-/* ***************************************
- * 		Test System Components 
- * ***************************************
- */	
+    /* ***************************************
+     * 		Test System Components 
+     * ***************************************
+     */	
 	type component Tester {
 		port AdapterControlPort acPort;
 		port InfoPort infoPort;
@@ -45,6 +46,14 @@ module OneM2M_TestSystem {
 		var MsgIn vc_response;
 		var default vc_a_ae := null;
 		var default vc_a_cse := null;
+		
+		// @JaeYoung, Definition for the MQTT protocol binding
+		var IPL4asp_Types.Result  vl_result;
+    	var IPL4asp_Types.Result  c_res := { errorCode := omit, connId := omit, os_error_code := omit, os_error_text := omit };
+		var integer v_cid, v_ret;
+        var TCPState v_TCPState := Disconnected;
+		
+		
 	};
 	
 	type component AeSimu extends Tester {

@@ -18,8 +18,8 @@
 ****************************************************************************************/
 
 // Module dependencies
-import from Mqtt_v3_1_1_Types all;
-import from Mqtt_v3_1_1_IPL4SizeFunction all;
+import from MQTT_v3_1_1_Types all;
+import from MQTT_v3_1_1_IPL4SizeFunction all;
 import from CoAP_Types all;
 import from HTTPmsg_Types all;
 import from HTTPmsg_MessageLen all;
@@ -68,7 +68,7 @@ type record PortMap  {
 	boolean    init
 }
 
-type enumerated  MsgState {idle, sent, postponed }	
+type enumerated  MsgState { idle, sent, postponed }	
 type enumerated  ConnState { connected, waitForClose }	
 // type enumerated  MsgGetLenState { stateSet, stateUnset }	
 
@@ -182,18 +182,18 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
     
     			var charstring primitiveScopeCheck := f_adressingFormatChecker(v_uri);
     					
-    			if(primitiveScopeCheck == "SPRELATIVE"){ // SP-Relative
+    			if(primitiveScopeCheck == "SPRELATIVE") { // SP-Relative
     		    	v_uri := "/~" & v_to;	
     		  		log(__SCOPE__&"-f_adressingFormatter(SP-relative):", v_uri);
-    			} else if (primitiveScopeCheck == "CSERELATIVE"){ // CSE-Relative
+    			} else if (primitiveScopeCheck == "CSERELATIVE") { // CSE-Relative
     				v_uri := "/" & v_to;
     		  		log(__SCOPE__&"-f_adressingFormatter(CSE-relative):", v_uri);	  		  
-    			} else if (primitiveScopeCheck == "ABSOLUTE"){ // Absolute
+    			} else if (primitiveScopeCheck == "ABSOLUTE") { // Absolute
     		 		v_uri := f_adressingFormatter(v_to, "/", "/_");
     		  		 		
     		 		var AddressingMethod p_addressingMethod := PX_ADDRESSING_METHOD;
     		  		 		
-    		 		if (ischosen(v_reqPrimitive.primitiveContent.aE) and p_addressingMethod == e_nonHierarchical){
+    		 		if (ischosen(v_reqPrimitive.primitiveContent.aE) and p_addressingMethod == e_nonHierarchical) {
     		 			 v_uri := v_uri & "/" & PX_CSE_RESOURCE_ID;	 
     		 		}
     		  		  		
@@ -277,6 +277,7 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
               		v_contentType := CONTENT_TYPE_BASE & v_serial_type & ";ty=" & int2str(v_ty);
     
                     //original payload with long name representation
+                    
                     v_payload := f_encode_requestPrimitive(v_reqPrimitive, v_serial_type); log(__SCOPE__&"-v_payload: ", v_payload);
     
                     //serialized payload with short name representation
@@ -326,44 +327,42 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
            		v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
             	log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
           	} else if (MQTT_BINDING == v_protocol_type){ // MQTT Protocol Binding
-          		log("v_state:  ",v_state)
-    
-				if (ischosen(pl_in.msg)) { 
-					if (ischosen(pl_in.msg.connect_msg)) { 
-						if(v_state == Idle) {
-							v_state := Wait_connack;	
-						}	
-					} else if (ischosen(pl_in.msg.disconnect_msg)) {
-						if(v_state == Connected) {
-							v_state := Idle;	
-						}	
-					} else if (ischosen(pl_in.msg.subscribe)) {
-						if(v_state == Connected) {
-							v_state:=Wait_suback;	
-						}  	
-					} else if (ischosen(pl_in.msg.publish)) {
-                		if(v_state == Subscribed)  { /*no change*/}
-          				else if(v_state == Wait_suback) { /*no change*/}
-          				else if(v_state == Connected) { 
-                    		f_MQTT_v3_1_1_enc(valueof(t_subscribe), v_ASP_Send.msg);
-                    		v_ASP_Send.connId :=  v_connId;  
-                    		v_ASP_Send.proto := omit;       
-                    		v_state:=Wait_suback;
-        
-                    		port.send(v_ASP_Send) 
-    					} else {}
-        			} else {}  	
- 						f_MQTT_v3_1_1_enc(pl_in, pl_out.msg);
-				} else {
-        			pl_out.msg := pl_in.raw_message
-				}
-    
-        		pl_out.connId :=  v_connId;  
-        		pl_out.proto := omit; 
-    
-				log("v_connId:  ",v_connId)
-      
-				port.setstate(0);          	  
+				log("v_state:  ",v_state);         		
+//         		
+//         		if (ischosen(p_asp_Send.msg.connect_msg)) {
+//              		if(v_state==Idle) {
+//              			f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+//                		v_state:=Wait_connack;
+//        				log("--------->  connect sent");  
+//       	 			}	
+//      	 		} else if (ischosen(p_asp_Send.msg.disconnect_msg)) {
+//      	 			if(v_state==Disconnected) { 	
+//              			f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+//                		v_state:=Disconnected;
+//        				log("--------->  disconnect sent");
+//        			}	
+//        		} else if (ischosen(p_asp_Send.msg.subscribe)) {
+//        			if(v_state==Connected) { 	
+//              			f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+//               		 	v_state:=Wait_suback;
+//        				log("--------->  subscribe sent");
+//        			}	
+//        		} else if (ischosen(p_asp_Send.msg.unsubscribe)) { 
+//        			if(v_state==Wait_publish_echo) { 	
+//              			f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+//                		v_state:=Wait_unsuback;
+//        				log("--------->  unsubscribe sent");
+//        			}    			
+//        		} else if (ischosen(p_asp_Send.msg.publish)) {
+//        			if(v_state==Wait_suback) { 	
+//              			f_MQTT_v3_1_1_enc(valueof(pl_in),  pl_out.msg);
+//                   		v_state:=Wait_suback;
+//        				log("--------->  publish sent");
+//    				}
+//				}
+//            	p_asp_Send.connId := v_connId;  
+//            	p_asp_Send.proto := omit; 
+//           		port.setstate(0);
           	} else { // CoAP Protocol Binding
 				var CoAP_Message v_CoapMsgToSend;
           		var CoAP_ReqResp v_CoapMsg;
@@ -609,7 +608,7 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
       			} // ischosen request
       			// else {}  //if ischosen responsePrimitive -  responses do not have to be registered, only requests
     		} // ispresent primitive	
-			p_asp_Send.connId :=  v_portMap.portStates[v_portMap.firstFree].connId;		     
+			p_asp_Send.connId := v_portMap.portStates[v_portMap.firstFree].connId;		     
 			port.setstate(0);  
 		} else if ((v_portMap.firstFree - 1 >= 0) and
     			   (not (v_portMap.portStates[v_portMap.firstFree-1].msgOut==p_msgout)) and //new msgOut , has to be put on hold

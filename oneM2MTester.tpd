@@ -154,10 +154,12 @@
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PT.hh" relativeURI="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PT.hh"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PortType.ttcn" relativeURI="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PortType.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_Types.ttcn" relativeURI="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_Types.ttcn"/>
-    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_EncDec.cc" relativeURI="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_EncDec.cc"/>
-    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_IPL4SizeFunction.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_IPL4SizeFunction.ttcn"/>
-    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_Size.cc" relativeURI="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_Size.cc"/>
-    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_Types.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/Mqtt_v3_1_1_Types.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_templates_for_tls.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_templates_for_tls.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_testing_system.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_testing_system.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_EncDec.cc" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_EncDec.cc"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_IPL4SizeFunction.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_IPL4SizeFunction.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_Size.cc" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_Size.cc"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_Types.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_Types.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/src/Functions/External_function.hh" relativeURI="oneM2MTester/src/Functions/External_function.hh"/>
     <FileResource projectRelativePath="oneM2MTester/src/Functions/OneM2MTimeStampGEN.cc" relativeURI="oneM2MTester/src/Functions/OneM2MTimeStampGEN.cc"/>
     <FileResource projectRelativePath="oneM2MTester/src/Functions/OneM2M_Constants.ttcn" relativeURI="oneM2MTester/src/Functions/OneM2M_Constants.ttcn"/>

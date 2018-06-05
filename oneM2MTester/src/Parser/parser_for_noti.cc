@@ -17,7 +17,6 @@
 #include "json.h"
 #include "json-forwards.h"
 #include "External_function.hh"
-#include "OneM2M_Ports.hh"
 
 using namespace tinyxml2;
 using namespace Json;

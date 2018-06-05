@@ -27,6 +27,7 @@ module OneM2M_Ports {
 	import from OneM2M_Constants all;
 	import from OneM2M_Pixits all;
 	import from oneM2MTester_Template all;	
+	import from MQTT_templates_for_tls all;
 
 	/**
 	 * @desc Port to transport oneM2M primitives
@@ -35,7 +36,7 @@ module OneM2M_Ports {
 	 * @desc this port is allowed to extend for futher usage  
 	 * @desc e.g. extend OneM2MPort to dual-faced port
 	 */
-	 	
+
 	type port OneM2MPort message map to IPL4asp_PT {
 		out 
 			MsgOut 	   to	ASP_Send        with f_enc_M2MPrimitive_to_ASPSend();
@@ -43,12 +44,12 @@ module OneM2M_Ports {
 			MsgIn	   from ASP_RecvFrom	with f_dec_ASPRecvFrom_to_M2MPrimitive(),
 	     	ASP_Event  from ASP_Event       with f_handleASPEvent();
 	   
-		var PortMap v_portMapvar;
-		
-		// Definition for MQTT handling
-		integer v_connId      
-    	var  MQTTClientState v_state := Idle;
-    	var  ASP_Send v_ASP_Send;
+	    // Definition for the MQTT protocol binding
+		var PortMap v_portMap;
+		var integer v_connId;      
+    	var MQTTClientState v_state := Idle;
+    	var ASP_Send v_ASP_Send;
+    	
 	} with { extension "internal" }
 	
 	/**
