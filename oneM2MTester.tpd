@@ -154,6 +154,8 @@
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PT.hh" relativeURI="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PT.hh"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PortType.ttcn" relativeURI="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_PortType.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_Types.ttcn" relativeURI="oneM2MTester/ProtocolModules/HTTP/HTTPmsg_Types.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_User_CtrlFunct.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_User_CtrlFunct.ttcn"/>
+    <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_User_CtrlFunctDef.cc" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_User_CtrlFunctDef.cc"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_templates_for_tls.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_templates_for_tls.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_testing_system.ttcn" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_testing_system.ttcn"/>
     <FileResource projectRelativePath="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_EncDec.cc" relativeURI="oneM2MTester/ProtocolModules/MQTT/MQTT_v3_1_1_EncDec.cc"/>

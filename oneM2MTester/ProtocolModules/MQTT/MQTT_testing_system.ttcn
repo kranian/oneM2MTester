@@ -13,10 +13,11 @@ module MQTT_testing_system {
     import from MQTT_v3_1_1_Types all;
     import from MQTT_v3_1_1_IPL4SizeFunction all;
     import from OneM2M_TestSystem all;
+    import from MQTT_User_CtrlFunct all;
     
 	function f_preamble() runs on AeSimu system CseSystem {
 		vl_result := c_res;
-		// vl_result :=MQTT_User_CtrlFunct.f_IPL4_connect( MQTT_PCO, tsp_hostname, tsp_remPort,"",0, -1, {tcp := {} }, {} ); 
+		vl_result := MQTT_User_CtrlFunct.f_IPL4_connect(mcaPort, tsp_hostname, tsp_remPort,"",0, -1, {tcp := {} }, {} ); 
     
       	log("connect result", vl_result);
       	
@@ -32,8 +33,8 @@ module MQTT_testing_system {
 		//register message length function of MQTT with IPL4:
 	    //*************************************************************************
 		var f_IPL4_getMsgLen getMsg_Func := refers(f_GetMsgLengthMQTT);
-        // MQTT_User_CtrlFunct.f_IPL4_setGetMsgLen(MQTT_PCO,v_cid, getMsg_Func, {});
+        MQTT_User_CtrlFunct.f_IPL4_setGetMsgLen(mcaPort,v_cid, getMsg_Func, {});
         //*************************************************************************
-		// MQTT_PCO.send(v_cid);// send connId to the port
+		mcaPort.send(v_cid);// send connId to the port
 	}
 }

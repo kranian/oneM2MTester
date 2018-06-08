@@ -19,7 +19,9 @@
 
 // Module dependencies
 import from MQTT_v3_1_1_Types all;
+import from MQTT_templates_for_tls all;
 import from MQTT_v3_1_1_IPL4SizeFunction all;
+import from MQTT_testing_system all;
 import from CoAP_Types all;
 import from HTTPmsg_Types all;
 import from HTTPmsg_MessageLen all;
@@ -327,7 +329,9 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
            		v_encoded_msg := enc_HTTPMessage(v_httpMsgToSend);        
             	log(__SCOPE__ &"-Encoded HTTP Message to send ", v_encoded_msg);     
           	} else if (MQTT_BINDING == v_protocol_type){ // MQTT Protocol Binding
-				log("v_state:  ",v_state);         		
+				log("v_state:  ",v_state);  
+				
+				// port.send(t_connect); 		
 //         		
 //         		if (ischosen(p_asp_Send.msg.connect_msg)) {
 //              		if(v_state==Idle) {
@@ -994,6 +998,28 @@ function f_dec_ASPRecvFrom_to_M2MPrimitive(in ASP_RecvFrom p_aspRecvFrom, out Ms
     }
 } with {extension "prototype(fast)"} // End of Function
 
+/******************************************************
+* Function for connection ID                          *
+*******************************************************/
+function f_set_connId(in integer p_in, out ASP_Send  p_out) port OneM2MPort {
+	v_connId := p_in; //save connection Id
+	port.setstate(4); //no output
+} with {extension "prototype(fast)"}
+
+/******************************************************
+* Function for MQTT encoding                          *
+*******************************************************/
+function f_enc_MQTT_Translation ( in MQTT_v3_1_1_Message  pl_in, out ASP_Send pl_out) port OneM2MPort {
+    port.setstate(0);
+} with {extension "prototype(fast)" }
+
+/******************************************************
+* Function for MQTT decoding                          *
+*******************************************************/
+function f_dec_MQTT_Translation (in  ASP_RecvFrom pl_in, out MQTT_v3_1_1_Message pl_out) port OneM2MPort {
+	port.setstate(0);
+} with {extension "prototype(fast)" }
+    
 /******************************************************
 * Function for utPort encoding                        *
 *******************************************************/

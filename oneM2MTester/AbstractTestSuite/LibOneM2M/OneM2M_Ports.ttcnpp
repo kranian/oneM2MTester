@@ -39,11 +39,15 @@ module OneM2M_Ports {
 
 	type port OneM2MPort message map to IPL4asp_PT {
 		out 
-			MsgOut 	   to	ASP_Send        with f_enc_M2MPrimitive_to_ASPSend();
+			MsgOut 	   to	ASP_Send        with f_enc_M2MPrimitive_to_ASPSend(),
+			integer    to   ASP_Send        with f_set_connId(),
+			MQTT_v3_1_1_Message    to   ASP_Send   with f_enc_MQTT_Translation();
+			
 		in 
 			MsgIn	   from ASP_RecvFrom	with f_dec_ASPRecvFrom_to_M2MPrimitive(),
-	     	ASP_Event  from ASP_Event       with f_handleASPEvent();
-	   
+	     	ASP_Event  from ASP_Event       with f_handleASPEvent(),
+	     	MQTT_v3_1_1_Message    from ASP_RecvFrom 	with f_dec_MQTT_Translation();
+	     	
 	    // Definition for the MQTT protocol binding
 		var PortMap v_portMap;
 		var integer v_connId;      
