@@ -331,8 +331,31 @@ function f_enc_M2MPrimitive_to_ASPSend(in MsgOut p_msgout, out ASP_Send p_asp_Se
           	} else if (MQTT_BINDING == v_protocol_type){ // MQTT Protocol Binding
 				log("v_state:  ",v_state);  
 				
-				// port.send(t_connect); 		
-//         		
+				timer t := 10.0
+				 
+				port.send(MQTT_templates_for_tls.t_connect); 		
+         		
+         		alt {
+            		[]port.receive(MQTT_templates_for_tls.t_connack) {
+            			v_state := Connected;	
+            		}    
+                	[]t.timeout;
+            	}
+            	
+            	port.send(MQTT_templates_for_tls.t_unsubscribe);
+				t.start; 
+        
+            	alt {
+            		[]port.receive(MQTT_templates_for_tls.t_unsuback) {
+						v_state:=Disconnected
+
+					}
+                	[]t.timeout;
+            	}   
+          	
+				port.send(MQTT_templates_for_tls.t_disconnect) 
+        		port.setstate(4);
+            	
 //         		if (ischosen(p_asp_Send.msg.connect_msg)) {
 //              		if(v_state==Idle) {
 //              			f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
@@ -1010,7 +1033,44 @@ function f_set_connId(in integer p_in, out ASP_Send  p_out) port OneM2MPort {
 * Function for MQTT encoding                          *
 *******************************************************/
 function f_enc_MQTT_Translation ( in MQTT_v3_1_1_Message  pl_in, out ASP_Send pl_out) port OneM2MPort {
-    port.setstate(0);
+	log("v_state:  ",v_state)
+    
+	if (ischosen(pl_in.msg)) { 
+		if (ischosen(pl_in.msg.connect_msg)) {
+			if(v_state==Idle) {
+				f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+				v_state:=Wait_connack;
+				log("--------->  connect sent");  
+			}	
+      	} else if (ischosen(pl_in.msg.disconnect_msg)) {
+      	 	if(v_state==Disconnected) { 	
+              	f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+                v_state:=Disconnected;
+        		log("--------->  disconnect sent");
+        	}	
+		} else if (ischosen(pl_in.msg.subscribe)) {
+			if(v_state==Connected) { 	
+				f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+				v_state:=Wait_suback;
+				log("--------->  subscribe sent");
+			}	
+		} else if (ischosen(pl_in.msg.unsubscribe)) { 
+			if(v_state==Wait_publish_echo) { 	
+				f_MQTT_v3_1_1_enc(valueof(pl_in), pl_out.msg);
+				v_state:=Wait_unsuback;
+				log("--------->  unsubscribe sent");
+			}    			
+		} else if (ischosen(pl_in.msg.publish)) {
+			if(v_state==Wait_suback) { 	
+				f_MQTT_v3_1_1_enc(valueof(pl_in),  pl_out.msg);
+				v_state:=Wait_suback;
+				log("--------->  publish sent");
+			}
+		}
+    	pl_out.connId := v_connId;  
+    	pl_out.proto := omit; 
+    	port.setstate(0);
+	} else {}
 } with {extension "prototype(fast)" }
 
 /******************************************************
